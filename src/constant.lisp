@@ -75,14 +75,14 @@
 	 (+ (* byte #x80) #xAC00)) ; half-blocks from U+E000 to U+FF80
 	((<= #xA8 byte #xF8)
 	 (error "reserved"))		; reserved for future use
-	((= byte #xF9) #x00C0) ; Latin-1 letters + half of Latin Extended-A
-	((= byte #xFA) #x0250) ; IPA Extensions
-	((= byte #xFB) #x0370) ; Greek
-	((= byte #xFC) #x0530) ; Armenian
-	((= byte #xFD) #x3040) ; Hiragana
-	((= byte #xFE) #x30A0) ; Katakana
-	((= byte #xFF) #xFF60) ; Halfwidth Katakana
-	(t (assert nil))))
+	(t (ecase byte
+	     (#xF9 #x00C0) ; Latin-1 letters + half of Latin Extended-A
+	     (#xFA #x0250) ; IPA Extensions
+	     (#xFB #x0370) ; Greek
+	     (#xFC #x0530) ; Armenian
+	     (#xFD #x3040) ; Hiragana
+	     (#xFE #x30A0) ; Katakana
+	     (#xFF #xFF60)))))		; Halfwidth Katakana
 
 (defun compressible-code-point-p (x)
   (declare (type (integer #x0 #xFFFF) x))
@@ -101,7 +101,7 @@
   :test 'equalp)
 (declaim (type (array fixnum (8)) +static-windows+))
 
-(defun lookup-static-window-position (x)
+(defun lookup-static-window (x)
   (declare (type (integer 0 7) x))
   (aref +static-windows+ x))
 
@@ -125,3 +125,18 @@
    (+ #x10000 (* #x80			; offset
 		 (+ (* (logand hbyte #x1f) #x100)
 		    lbyte)))))
+
+(defun encode-to-surrogate-pair (code-point)
+  (declare (type (unsigned-byte 16) code-point))
+  (if (<= code-point #xFFFF)
+      code-point
+      (let* ((high (+ #xD800 (- (ldb (byte 10 10) code-point)
+				(ash #x10000 -10))))
+	     (low (+ #xDC00 (ldb (byte 10 0) code-point))))
+	(values high low))))
+
+(defun decode-from-surrogate-pair (high low)
+  (declare (type (unsigned-byte 8) high low))
+  (+ #x10000
+     (ash (- high #xD800) 10)
+     (- low #xDC00)))
