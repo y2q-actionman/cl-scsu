@@ -89,17 +89,21 @@
   (or (<= #x0 x (1- #x80))
       (<= (+ #x3380 #x7F) x (1- #xE000))))
 
+(alexandria:define-constant +static-windows+
+    #(#x0000	      ; (for quoting of tags used in single-byte mode)
+      #x0080	      ; Latin-1 Supplement
+      #x0100	      ; Latin Extended-A
+      #x0300	      ; Combining Diacritical Marks
+      #x2000	      ; General Punctuation
+      #x2080	      ; Currency Symbols
+      #x2100	      ; Letterlike Symbols and Number Forms
+      #x3000)	      ; CJK Symbols & Punctuation
+  :test 'equalp)
+(declaim (type (array fixnum (8)) +static-windows+))
+
 (defun lookup-static-window-position (x)
   (declare (type (integer 0 7) x))
-  (ecase x
-    (0 #x0000)	      ; (for quoting of tags used in single-byte mode)
-    (1 #x0080)	      ; Latin-1 Supplement
-    (2 #x0100)	      ; Latin Extended-A
-    (3 #x0300)	      ; Combining Diacritical Marks
-    (4 #x2000)	      ; General Punctuation
-    (5 #x2080)	      ; Currency Symbols
-    (6 #x2100)	      ; Letterlike Symbols and Number Forms
-    (7 #x3000)))      ; CJK Symbols & Punctuation
+  (aref +static-windows+ x))
 
 (alexandria:define-constant +default-positions-for-dynamically-positioned-windows+
     #(#x0080  ; Latin-1 Supplement
