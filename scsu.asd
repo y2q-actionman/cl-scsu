@@ -1,4 +1,4 @@
-;; Copyright (c) 2015 YOKOTA Yuki <y2q.actionman@gmail.com>
+;; Copyright (c) 2016 YOKOTA Yuki <y2q.actionman@gmail.com>
 ;;
 ;; This software is released under the MIT License.
 ;; See the LICENSE file.
@@ -9,7 +9,7 @@
   :description "An implementation of 'Standard Compression Scheme for Unicode'."
   :license "MIT"
   :author "YOKOTA Yuki <y2q.actionman@gmail.com>"
-  :depends-on (:alexandria)  ; :babel
+  :depends-on (:alexandria)  ; :babel :flexi-stream
   :components
   ((:module "src"
     :serial t
@@ -17,4 +17,4 @@
     ((:file "package")
      (:file "constant")
      (:file "scsu"))))
-  :in-order-to ((asdf:test-op (asdf:test-op #:scsu.test)))) 
+  :in-order-to ((asdf:test-op (asdf:test-op #:cl-scsu.test)))) 
