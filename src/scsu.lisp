@@ -4,7 +4,7 @@
 (defclass scsu-state ()
   ((mode :initform :single-byte-mode :accessor scsu-state-mode)
    (dynamic-window
-    :initform (copy-seq +default-positions-for-dynamically-positioned-windows+)
+    :initform +default-positions-for-dynamically-positioned-windows+
     :accessor scsu-state-dynamic-window)
    (active-window-index :initform 0 :accessor scsu-state-active-window-index)))
 
@@ -12,7 +12,11 @@
   (aref (scsu-state-dynamic-window state) window))
 
 (defun (setf lookup-dynamic-window) (offset state window)
-  (setf (aref (scsu-state-dynamic-window state) window) offset))
+  (with-accessors ((dwindow scsu-state-dynamic-window))
+      state
+    (when (eq dwindow +default-positions-for-dynamically-positioned-windows+)
+      (setf dwindow (copy-seq +default-positions-for-dynamically-positioned-windows+)))
+    (setf (aref dwindow window) offset)))
 
 (defmethod scsu-state-active-window-offset (state)
   (lookup-dynamic-window state (scsu-state-active-window-index state)))
@@ -21,8 +25,14 @@
   (setf (lookup-dynamic-window state (scsu-state-active-window-index state))
 	offset))
 
+(defmethod scsu-state-reset ((state scsu-state))
+  (slot-makunbound state 'mode)
+  (slot-makunbound state 'dynamic-window)
+  (slot-makunbound state 'active-window-index)
+  (shared-initialize state t))
 
-;; Condition
+
+;;; Condition
 (define-condition scsu-error (error)
   ((start-position :accessor scsu-decode-error-start-position)
    (error-position :accessor scsu-decode-error-error-position)))
