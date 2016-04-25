@@ -161,6 +161,10 @@
     (declare (type (integer 0 #xFFFF) code-point))
     (cond ((<= #xD800 code-point #xDBFF) ; high surrogate
 	   (let ((low (decode-unit* state read-func))) ; TODO: catch error.
+	     (declare (type (integer 0 #xFFFF) low))
+	     (unless (<= #xDC00 low #xDFFF)
+	       (error 'scsu-decode-error
+		      :format-control "High surrogate appeared alone"))
 	     (decode-from-surrogate-pair code-point low)))
 	  ((<= #xDC00 code-point #xDFFF) ; low surrogate
 	   (error 'scsu-decode-error
@@ -168,19 +172,20 @@
 	  (t
 	   code-point))))
 
-;; TODO: make 'state' to an optional parameter.
-(defun decode-unit (state buffer &key (start 0) (end (length buffer)))
+(defun decode-unit-to-bytes (bytes &key (start 0) (end (length bytes))
+				     (state (make-instance 'scsu-state)))
+  (declare (optimize (speed 3) (safety 0)))
   (declare (type fixnum start end)
-	   (type (array (unsigned-byte 8) *) buffer))
+	   (type (array (unsigned-byte 8) *) bytes))
   (let ((current start))
     (declare (type fixnum current))
     (flet ((pick-byte ()
-	     (if (>= current end)
-		 (error 'scsu-decode-error
-			:format-control "Reached to the end of the buffer")
-		 (prog1 (aref buffer current)
-		   (incf current)))))
-      (values (decode-unit* state #'pick-byte) current))))
+	     (cond ((< current end)
+		    (prog1 (aref bytes current)
+		      (incf current)))
+		   (t
+		    (error 'scsu-decode-error :format-control "Reached to the end of the bytes")))))
+      (values (decode-unit* state #'pick-byte) current state))))
 
 
 ;;; Encode
@@ -270,25 +275,44 @@
 (defun encode-unit* (state code-point write-func)
   (declare (type (integer 0 #x10FFFF) code-point)
 	   (type write-func-type write-func))
-  (check-type code-point (integer 0 #x10FFFF))
-  (when (> code-point #xFFFF)
-    (multiple-value-bind (high low)
-	(encode-to-surrogate-pair code-point)
-      (encode-unit* state high write-func)
-      (return-from encode-unit* (encode-unit* state low write-func))))
-  (ecase (scsu-state-mode state)
-    (:single-byte-mode (encode-unit*/single-byte-mode state code-point write-func))
-    (:unicode-mode (encode-unit*/unicode-mode state code-point write-func))))
+  (cond ((> code-point #xFFFF)
+	 (multiple-value-bind (high low)
+	     (encode-to-surrogate-pair code-point)
+	   (encode-unit* state high write-func)
+	   (encode-unit* state low write-func)))
+	(t
+	 (ecase (scsu-state-mode state)
+	   (:single-byte-mode (encode-unit*/single-byte-mode state code-point write-func))
+	   (:unicode-mode (encode-unit*/unicode-mode state code-point write-func))))))
 
-;; TODO: make 'state' to an optional parameter.
-(defun encode-unit (state code-point buffer &key (start 0) (end (length buffer)))
+
+;; The required length is out of BMP case.
+;; - SQU, <high surrogate 1>, <high surrogate 2>, SQU, <low surrogate 1>, <low surrogate 2>
+;; - SDX, <high>, <low>, <byte>
+(defconstant +encode-unit-default-bytes-length+ 6)
+
+(defun encode-unit-to-bytes (code-point
+			     &key (bytes (make-array +encode-unit-default-bytes-length+
+						     :fill-pointer 0
+						     :element-type '(unsigned-byte 8)))
+			       (start 0)
+			       (end (length bytes))
+			       (state (make-instance 'scsu-state)))
   (declare (type fixnum start end)
-	   (type (array (unsigned-byte 8) *) buffer))
+	   (type (array (unsigned-byte 8) *) bytes))
+  (check-type code-point (integer 0 #x10FFFF))
   (let ((current start))
     (declare (type fixnum current))
     (flet ((put-byte (byte)
-	     (if (>= current end)
-		 (error 'scsu-encode-error :format-control "Reached to the end of the buffer")
-		 (prog1 (setf (aref buffer current) byte)
-		   (incf current)))))
-      (values (encode-unit* state code-point #'put-byte) current))))
+	     (declare (type (unsigned-byte 8) bytes))
+	     (cond ((< current end)
+		    (setf (aref bytes current) byte)
+		    (incf current))
+		   ((array-has-fill-pointer-p bytes)
+		    (vector-push-extend byte bytes) ; TODO: wrap error.
+		    (incf current))
+		   (t
+		    (error 'scsu-encode-error
+			   :format-control "Reached to the end of the bytes")))))
+      (encode-unit* state code-point #'put-byte)
+      (values bytes current state))))
