@@ -1,12 +1,16 @@
 (in-package :scsu)
 
 ;;; State
+(defparameter *scsu-state-default-fixed-window-p* nil)
+
 (defclass scsu-state ()
   ((mode :initform :single-byte-mode :accessor scsu-state-mode)
    (dynamic-window
     :initform +default-positions-for-dynamically-positioned-windows+
     :accessor scsu-state-dynamic-window)
-   (active-window-index :initform 0 :accessor scsu-state-active-window-index)))
+   (active-window-index :initform 0 :accessor scsu-state-active-window-index)
+   (fixed-window-p :initarg :fixed-window :initform *scsu-state-default-fixed-window-p*
+		   :accessor scsu-state-fixed-window-p)))
 
 (defun lookup-dynamic-window (state window)
   (declare (type window-index window))
@@ -270,7 +274,7 @@
 			   (declare (type window-index i))
 			   (lookup-dynamic-window state i))))
 
-(defun encode-unit*/single-byte-mode (state code-point write-func) ; TODO: add 'fixed?' parameter
+(defun encode-unit*/single-byte-mode (state code-point write-func)
   (declare (type unicode-code-point code-point)
 	   (type write-func-type write-func))
   (cond ((< code-point #x20)		
@@ -304,10 +308,12 @@
 	 (funcall write-func +SQU+)
 	 (funcall write-func #xFE)
 	 (funcall write-func #xFF))
-	(t
-	 ;; TODO:
-	 ;; Define a new window, or goto unicode mode
-	 ;; not-compressible => Unicode mode
+	;; TODO:
+	;; Define a new window, or goto unicode mode
+	;; not-compressible => Unicode mode
+	((or (incompressible-code-point-p code-point)
+	     (scsu-state-fixed-window-p state)
+	     t)				; TODO: change to a good function..
 	 (funcall write-func +SCU+)
 	 (setf (scsu-state-mode state) :unicode-mode)
 	 (encode-unit* state code-point write-func))))
