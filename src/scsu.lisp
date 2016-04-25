@@ -264,7 +264,7 @@
   (find-suitable-window* code-point
 			 (lambda (i) (lookup-dynamic-window state i))))
 
-(defun encode-unit*/single-byte-mode (state code-point write-func)
+(defun encode-unit*/single-byte-mode (state code-point write-func) ; TODO: add 'fixed?' parameter
   (declare (type (integer 0 #x10FFFF) code-point)
 	   (type write-func-type write-func))
   (cond ((< code-point #x20)		

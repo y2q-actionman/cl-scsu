@@ -1,0 +1,42 @@
+# -*- mode: org -*-
+
+* TODO
+
+- [X] dynamic-window 最適化
+  書き込みがあるまでは 定数参照にする。
+
+- [X] state を元に戻す機能。
+  reinitialize-instance を使う？
+  => 一応、 reset という別関数に
+
+
+- [ ] iconv などが、中途バッファを食った時にどうするかを見る。シフト状態を iconv_t に持つんだっけ？
+  iconv のように、 stream ではなく buffer を渡すようにして、状態を戻させる他にない気がする。
+  先読みバッファ？
+
+- [ ] macro : handler-bind で error 拾って state を書き戻す
+
+- [ ] define か unicode-mode の使い分け
+
+- [ ] 必要な上位interface
+  {encode,decode}-{string,utf8-vector,utf16-vector,utf32-vector}
+  state省略はこの層の機能かな
+
+- [ ] stream からの使用??
+  string にしてから変換すればよいか。
+
+- [ ] fixed window
+  固定window なら、一意に圧縮できる。 encoder で class slot のみ実装?
+
+* ボツネタ
+
+- decode-unit* で +SCU+ とかが来たときに、再帰しないでタグを返す。
+  decode-unit の上位側で、出来るだけタグを食えるようにする。
+
+  => 面倒。特にサロゲートとにの組み合わせを、上位関数でやらないといけないのは嫌。
+  ちょっと例外的な系の効率は、まあ置いておけるかも。
+
+  
+* 仕様
+
+-
