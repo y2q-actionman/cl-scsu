@@ -174,7 +174,6 @@
 
 (defun decode-unit-to-bytes (bytes &key (start 0) (end (length bytes))
 				     (state (make-instance 'scsu-state)))
-  (declare (optimize (speed 3) (safety 0)))
   (declare (type fixnum start end)
 	   (type (array (unsigned-byte 8) *) bytes))
   (let ((current start))
@@ -186,6 +185,43 @@
 		   (t
 		    (error 'scsu-decode-error :format-control "Reached to the end of the bytes")))))
       (values (decode-unit* state #'pick-byte) current state))))
+
+(defun decode-to-string (bytes
+			 &key (src-start 0) (src-end (length bytes))
+			   (string (make-array (floor (length bytes) 2) ; no way to expect length..
+					       :element-type 'character
+					       :fill-pointer 0 :adjustable t))
+			   (dst-start 0)
+			   (dst-end (length string))
+			   (state (make-instance 'scsu-state)))
+  (declare (type (array (unsigned-byte 8) *) bytes)
+	   (type fixnum src-start src-end dst-start dst-end)
+	   (type string string))
+  ;; TODO: merge with above?
+  (let ((src-current src-start)
+	(dst-current dst-start))
+    (declare (type fixnum src-current dst-current))
+    ;; TODO: Don't reduce to last bytes..
+    (flet ((pick-byte ()
+	     (cond ((< src-current src-end)
+		    (prog1 (aref bytes src-current)
+		      (incf src-current)))
+		   (t
+		    (error 'scsu-decode-error :format-control "Reached to the end of the bytes"))))
+	   ;; TODO: merge with encode func.
+	   (put-char (c)
+	     (cond ((< dst-current dst-end)
+		    (setf (aref string dst-current) c)
+		    (incf dst-current))
+		   ((array-has-fill-pointer-p string)
+		    (vector-push-extend c string) ; TODO: wrap error
+		    (incf dst-current))
+		   (t
+		    (error 'scsu-decode-error :format-control "Reached to the end of the string")))))
+      (loop while (< src-current src-end) ; TODO: should return even after a completed control byte.
+	 as code-point = (decode-unit* state #'pick-byte)
+	 do (put-char (code-char code-point)))
+      (values string dst-current src-current state)))) ; TODO: rearrange return values?
 
 
 ;;; Encode
@@ -316,3 +352,34 @@
 			   :format-control "Reached to the end of the bytes")))))
       (encode-unit* state code-point #'put-byte)
       (values bytes current state))))
+
+(defun encode-from-string (string
+			   &key (src-start 0) (src-end (length string))
+			     (bytes (make-array (length string) ; no way to expect length..
+						:fill-pointer 0 :adjustable t
+						:element-type '(unsigned-byte 8)))
+			     (dst-start 0)
+			     (dst-end (length bytes))
+			     (state (make-instance 'scsu-state)))
+  (declare (type string string)
+	   (type (array (unsigned-byte 8) *) bytes)	   
+	   (type fixnum src-start src-end dst-start dst-end))
+  ;; TODO: merge with above?
+  (let ((current dst-start))
+    (declare (type fixnum current))
+    (flet ((put-byte (byte)
+	     (declare (type (unsigned-byte 8) bytes))
+	     (cond ((< current dst-end)
+		    (setf (aref bytes current) byte)
+		    (incf current))
+		   ((array-has-fill-pointer-p bytes)
+		    (vector-push-extend byte bytes) ; TODO: wrap error.
+		    (incf current))
+		   (t
+		    (error 'scsu-encode-error
+			   :format-control "Reached to the end of the bytes")))))
+      (loop for i of-type fixnum from src-start below src-end
+	 as c = (char string i)
+	 do (encode-unit* state (char-code c) #'put-byte))
+      (values bytes current state))))
+
