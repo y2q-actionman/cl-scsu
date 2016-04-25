@@ -214,23 +214,21 @@
 	   code-point))))
 
 (defun decode-to-string (bytes
-			 &key (src-start 0) (src-end (length bytes))
-			   (string (make-array (floor (length bytes) 2) ; no way to expect length..
+			 &key (start1 0) (end1 (length bytes))
+			   (string (make-array (floor end1 2) ; a rough expectation.
 					       :element-type 'character
 					       :fill-pointer 0 :adjustable t))
-			   (dst-start 0)
-			   (dst-end (length string))
+			   (start2 0) (end2 (length string))
 			   (state (make-instance 'scsu-state)))
   (declare (type (array (unsigned-byte 8) *) bytes)
-	   (type fixnum src-start src-end dst-start dst-end)
+	   (type fixnum start1 end1 start2 end2)
 	   (type string string))
-  ;; TODO: merge with above?
   ;; TODO: Don't reduce to last bytes..
   (with-reading-function (pick-byte src-current)
-      (bytes src-start src-end)
+      (bytes start1 end1)
     (with-writing-function (put-char dst-current)
-	(string dst-start dst-end :element-type character)
-      (loop while (< src-current src-end) ; TODO: should return even after a completed control byte.
+	(string start2 end2 :element-type character)
+      (loop while (< src-current end1) ; TODO: should return even after a completed control byte.
 	 as code-point of-type unicode-code-point = (decode-unit* state #'pick-byte)
 	 do (put-char (code-char code-point)))
       (values string dst-current state src-current))))
@@ -238,7 +236,7 @@
 (defun decode-unit-to-bytes (bytes &key (start 0) (end (length bytes))
 				     (state (make-instance 'scsu-state)))
   (let* ((ret-list (multiple-value-list 
-		    (decode-to-string bytes :src-start start :src-end end :state state)))
+		    (decode-to-string bytes :start1 start :end1 end :state state)))
 	 (ret-string (first ret-list)))
     (declare (type list ret-list)
 	     (type string ret-string))	     
@@ -349,19 +347,18 @@
 	   (:unicode-mode (encode-unit*/unicode-mode state code-point write-func))))))
 
 (defun encode-from-string (string
-			   &key (src-start 0) (src-end (length string))
+			   &key (start1 0) (end1 (length string))
 			     (bytes (make-array (length string) ; no way to expect length..
 						:fill-pointer 0 :adjustable t
 						:element-type '(unsigned-byte 8)))
-			     (dst-start 0) ; TODO: change name to ":start1, :start2"?
-			     (dst-end (length bytes))
+			     (start2 0) (end2 (length bytes))
 			     (state (make-instance 'scsu-state)))
   (declare (type string string)
 	   (type (array (unsigned-byte 8) *) bytes)	   
-	   (type fixnum src-start src-end dst-start dst-end))
+	   (type fixnum start1 end1 start2 end2))
   (with-writing-function (put-byte current)
-      (bytes dst-start dst-end :element-type (unsigned-byte 8))
-    (loop for i of-type fixnum from src-start below src-end
+      (bytes start2 end2 :element-type (unsigned-byte 8))
+    (loop for i of-type fixnum from start1 below end1
        as c of-type character = (char string i)
        do (encode-unit* state (char-code c) #'put-byte))
     (values bytes current state)))
@@ -380,10 +377,10 @@
 			       (state (make-instance 'scsu-state)))
   (declare (type fixnum start end)
 	   (type (array (unsigned-byte 8) *) bytes))
-  (check-type code-point (integer 0 #x10FFFF))
+  (check-type code-point unicode-code-point)
   (let ((tmp-string (make-array 1 :element-type 'character)))
     (declare (type simple-string tmp-string)
 	     (dynamic-extent tmp-string))
     (setf (schar tmp-string 0) code-point)
-    (encode-from-string tmp-string :src-start 0 :src-end 1
-			:bytes bytes :dst-start start :dst-end end :state state)))
+    (encode-from-string tmp-string :start1 0 :end1 1
+			:bytes bytes :start2 start :end2 end :state state)))
