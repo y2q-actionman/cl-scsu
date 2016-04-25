@@ -9,12 +9,18 @@
   reinitialize-instance を使う？
   => 一応、 reset という別関数に
 
+- [X] fixed window
+  固定window なら、一意に圧縮できる。 encoder で class slot のみ実装?
+  とりあえず、 fixed window フラグを state に入れ、 encode 内部で見るように。
+
 
 - [ ] iconv などが、中途バッファを食った時にどうするかを見る。シフト状態を iconv_t に持つんだっけ？
   iconv のように、 stream ではなく buffer を渡すようにして、状態を戻させる他にない気がする。
   先読みバッファ？
 
 - [ ] macro : handler-bind で error 拾って state を書き戻す
+  とりあえず、 position を書き直すのを入れた。
+  どこまで state を戻すかを選べるようにしておきたい。
 
 - [ ] define か unicode-mode の使い分け
 
@@ -25,8 +31,6 @@
 - [ ] stream からの使用??
   string にしてから変換すればよいか。
 
-- [ ] fixed window
-  固定window なら、一意に圧縮できる。 encoder で class slot のみ実装?
 
 * ボツネタ
 

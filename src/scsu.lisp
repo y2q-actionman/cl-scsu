@@ -42,8 +42,8 @@
 
 ;;; Condition
 (define-condition scsu-error (error)
-  ((start-position :accessor scsu-decode-error-start-position)
-   (error-position :accessor scsu-decode-error-error-position)))
+  ((src-error-position :accessor scsu-error-src-error-position)
+   (dst-error-position :accessor scsu-error-dst-error-position)))
 
 (define-condition scsu-encode-error (scsu-error)
   ())
@@ -53,6 +53,32 @@
 
 
 ;;; Util
+(defmacro with-scsu-error-position ((&key src dst) &body body)
+  `(handler-bind ((scsu-error
+		   (lambda (c)
+		     ;; Fills error-poisiton slots
+		     (setf (scsu-error-src-error-position c) ,src ; evaluate at this point!
+			   (scsu-error-dst-error-position c) ,dst)
+		     )))		; and, decline
+     ,@body))
+
+;; TODO: add restart..
+#+ignore
+(defmacro with-scsu-restart ((state) &body body)
+  (alexandria:with-gensyms (state_ m_ d-w_ a-w-i_)
+    `(let* ((,state_ ,state)
+	    (,m_ (slot-value ,state_ 'mode))
+	    (,d-w_ (slot-value ,state_ 'dynamic-window))
+	    (,a-w-i_ (slot-value ,state_ 'active-window-index)))
+       (restart-case
+	   (progn ,@body)
+	 (restore-state-and-abort ()
+	   :report "Restore SCSU state to the previous step, and abort"
+	   (setf (slot-value ,state_ 'mode) ,m_
+		 (slot-value ,state_ 'dynamic-window) ,d-w_
+		 (slot-value ,state_ 'active-window-index) ,a-w-i_)
+	   (abort))))))
+
 (defmacro with-reading-function ((function current)
 				 (buffer start end &key (element-type '(unsigned-byte 8)))
 				 &body body)
@@ -219,7 +245,7 @@
 
 (defun decode-to-string (bytes
 			 &key (start1 0) (end1 (length bytes))
-			   (string (make-array (floor end1 2) ; a rough expectation.
+			   (string (make-array (floor end1 2) ; a (too) rough expectation.
 					       :element-type 'character
 					       :fill-pointer 0 :adjustable t))
 			   (start2 0) (end2 (length string))
@@ -232,9 +258,10 @@
       (bytes start1 end1)
     (with-writing-function (put-char dst-current)
 	(string start2 end2 :element-type character)
-      (loop while (< src-current end1) ; TODO: should return even after a completed control byte.
-	 as code-point of-type unicode-code-point = (decode-unit* state #'pick-byte)
-	 do (put-char (code-char code-point)))
+      (with-scsu-error-position (:src src-current :dst dst-current)
+	(loop while (< src-current end1) ; TODO: should return even after a completed control byte.
+	   as code-point of-type unicode-code-point = (decode-unit* state #'pick-byte)
+	   do (put-char (code-char code-point))))
       (values string dst-current state src-current))))
 
 (defun decode-unit-to-bytes (bytes &key (start 0) (end (length bytes))
@@ -366,7 +393,8 @@
       (bytes start2 end2 :element-type (unsigned-byte 8))
     (loop for i of-type fixnum from start1 below end1
        as c of-type character = (char string i)
-       do (encode-unit* state (char-code c) #'put-byte))
+       do (with-scsu-error-position (:src i :dst current)
+	    (encode-unit* state (char-code c) #'put-byte)))
     (values bytes current state)))
 
 ;; The required length is out of BMP case.
