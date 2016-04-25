@@ -2,6 +2,14 @@
 
 (defconstant +window-count+ 8 "number of static or dynamic windows")
 
+;;; Types
+(deftype window-index ()
+  `(integer 0 7))
+
+(deftype unicode-code-point ()
+  `(integer 0 #x10FFFF))
+
+;;; Tags
 (defmacro define-window-find-function (name lower)
   `(defun ,name (byte)
      (declare (type (unsigned-byte 8) byte))
@@ -84,10 +92,9 @@
 	     (#xFE #x30A0) ; Katakana
 	     (#xFF #xFF60)))))		; Halfwidth Katakana
 
-(defun compressible-code-point-p (x)
-  (declare (type (integer #x0 #xFFFF) x))
-  (or (<= #x0 x (1- #x80))
-      (<= (+ #x3380 #x7F) x (1- #xE000))))
+(defun incompressible-code-point-p (code-point)
+  (declare (type unicode-code-point code-point))
+  (<= (+ #x3380 #x7F) code-point (1- #xE000)))
 
 (alexandria:define-constant +static-windows+
     #(#x0000	      ; (for quoting of tags used in single-byte mode)
@@ -101,9 +108,9 @@
   :test 'equalp)
 (declaim (type (array fixnum (8)) +static-windows+))
 
-(defun lookup-static-window (x)
-  (declare (type (integer 0 7) x))
-  (aref +static-windows+ x))
+(defun lookup-static-window (window)
+  (declare (type window-index window))
+  (aref +static-windows+ window))
 
 (alexandria:define-constant +default-positions-for-dynamically-positioned-windows+
     #(#x0080  ; Latin-1 Supplement
@@ -127,7 +134,7 @@
 		    lbyte)))))
 
 (defun encode-to-surrogate-pair (code-point)
-  (declare (type (unsigned-byte 16) code-point))
+  (declare (type unicode-code-point code-point))
   (if (<= code-point #xFFFF)
       code-point
       (let* ((high (+ #xD800 (- (ldb (byte 10 10) code-point)

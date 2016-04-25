@@ -9,9 +9,12 @@
    (active-window-index :initform 0 :accessor scsu-state-active-window-index)))
 
 (defun lookup-dynamic-window (state window)
+  (declare (type window-index window))
   (aref (scsu-state-dynamic-window state) window))
 
 (defun (setf lookup-dynamic-window) (offset state window)
+  (declare (type unicode-code-point offset)
+	   (type window-index window))
   (with-accessors ((dwindow scsu-state-dynamic-window))
       state
     (when (eq dwindow +default-positions-for-dynamically-positioned-windows+)
@@ -22,6 +25,7 @@
   (lookup-dynamic-window state (scsu-state-active-window-index state)))
 
 (defmethod (setf scsu-state-active-window-offset) (offset state)
+  (declare (type unicode-code-point offset))
   (setf (lookup-dynamic-window state (scsu-state-active-window-index state))
 	offset))
 
@@ -93,12 +97,12 @@
     (logior (ash next-byte1 8) next-byte2)))
 
 (defun scsu-change-to-window (state window)
-  (declare (type (integer 0 7) window))
+  (declare (type window-index window))
   (setf (scsu-state-active-window-index state) window))
 
 (defun scsu-define-window (state window offset)
-  (declare (type (integer 0 7) window)
-	   (type (integer 0 #x10FFFF) offset))
+  (declare (type window-index window)
+	   (type unicode-code-point offset))
   (scsu-change-to-window state window)  
   (setf (scsu-state-active-window-offset state) offset))
 
@@ -122,7 +126,7 @@
 	     ((#.+SQ0+ #.+SQ1+ #.+SQ2+ #.+SQ3+ #.+SQ4+ #.+SQ5+ #.+SQ6+ #.+SQ7+) ; Quote from Window
 	      (let ((window (find-SQn-window byte))
 		    (next-byte (funcall read-func)))
-		(declare (type (integer 0 7) window)
+		(declare (type window-index window)
 			 (type (unsigned-byte 8) next-byte))
 		(cond ((<= #x0 next-byte #x7f)
 		       (+ (lookup-static-window window) next-byte))
@@ -154,8 +158,8 @@
 	  (t				; In active dynamic window.
 	   (let ((offset (scsu-state-active-window-offset state))
 		 (position (logand byte #x7F))) ; (- byte #x80)
-	     (declare (type (integer 0 #x10FFFF) offset)
-		      (type (integer 0 #x7F) position))
+	     (declare (type unicode-code-point offset)
+		      (type (unsigned-byte 8) position))
 	     (+ offset position))))))
 
 (defun decode-unit*/unicode-mode (state read-func)
@@ -195,10 +199,10 @@
 	 (ecase (scsu-state-mode state)
 	   (:single-byte-mode (decode-unit*/single-byte-mode state read-func))
 	   (:unicode-mode (decode-unit*/unicode-mode state read-func)))))
-    (declare (type (integer 0 #xFFFF) code-point))
+    (declare (type (unsigned-byte 16) code-point))
     (cond ((<= #xD800 code-point #xDBFF) ; high surrogate
 	   (let ((low (decode-unit* state read-func))) ; TODO: catch error.
-	     (declare (type (integer 0 #xFFFF) low))
+	     (declare (type (unsigned-byte 16) low))
 	     (unless (<= #xDC00 low #xDFFF)
 	       (error 'scsu-decode-error
 		      :format-control "High surrogate appeared alone"))
@@ -227,7 +231,7 @@
     (with-writing-function (put-char dst-current)
 	(string dst-start dst-end :element-type character)
       (loop while (< src-current src-end) ; TODO: should return even after a completed control byte.
-	 as code-point = (decode-unit* state #'pick-byte)
+	 as code-point of-type unicode-code-point = (decode-unit* state #'pick-byte)
 	 do (put-char (code-char code-point)))
       (values string dst-current state src-current))))
 
@@ -236,6 +240,8 @@
   (let* ((ret-list (multiple-value-list 
 		    (decode-to-string bytes :src-start start :src-end end :state state)))
 	 (ret-string (first ret-list)))
+    (declare (type list ret-list)
+	     (type string ret-string))	     
     (apply #'values (char ret-string 0) (rest ret-list))))
 
 
@@ -244,28 +250,30 @@
   '(function ((unsigned-byte 8)) t))
 
 (defun in-window-p (offset code-point)
-  (declare (type (integer 0 #x10FFFF) offset code-point))
+  (declare (type unicode-code-point offset code-point))
   (<= offset code-point (+ offset #x7f)))
 
 (defun find-suitable-window* (code-point offset-func)
-  (declare (type (integer 0 #x10FFFF) code-point)
+  (declare (type unicode-code-point code-point)
 	   (type (function (fixnum)) offset-func))
   (loop for i of-type fixnum from 0 below +window-count+
-     as offset = (funcall offset-func i)
+     as offset of-type unicode-code-point = (funcall offset-func i)
      when (in-window-p offset code-point)
      return i))
 
 (defun find-suitable-static-window (code-point)
-  (declare (type (integer 0 #x10FFFF) code-point))
+  (declare (type unicode-code-point code-point))
   (find-suitable-window* code-point #'lookup-static-window))
 
 (defun find-suitable-dynamic-window (state code-point)
-  (declare (type (integer 0 #x10FFFF) code-point))
+  (declare (type unicode-code-point code-point))
   (find-suitable-window* code-point
-			 (lambda (i) (lookup-dynamic-window state i))))
+			 (lambda (i)
+			   (declare (type window-index i))
+			   (lookup-dynamic-window state i))))
 
 (defun encode-unit*/single-byte-mode (state code-point write-func) ; TODO: add 'fixed?' parameter
-  (declare (type (integer 0 #x10FFFF) code-point)
+  (declare (type unicode-code-point code-point)
 	   (type write-func-type write-func))
   (cond ((< code-point #x20)		
 	 (case code-point
@@ -276,22 +284,24 @@
 	 (funcall write-func code-point))
 	((in-window-p (scsu-state-active-window-offset state) code-point) ; in current dynamic window
 	 (let ((offset (scsu-state-active-window-offset state)))
-	   (declare (type (integer 0 #x10FFFF) offset))
+	   (declare (type unicode-code-point offset))
 	   (funcall write-func (+ (- code-point offset) #x80))))
 	((let ((swindow (find-suitable-static-window code-point))) ; in static window
 	   (when swindow
-	     (let ((offset (lookup-static-window swindow)))
-	       (declare (type (integer 0 #x10FFFF) offset))
-	       (funcall write-func (+ +SQ0+ swindow))
-	       (funcall write-func (- code-point offset))))))
+	     (locally (declare (type window-index swindow))
+	       (let ((offset (lookup-static-window swindow)))
+		 (declare (type unicode-code-point offset))
+		 (funcall write-func (+ +SQ0+ swindow))
+		 (funcall write-func (- code-point offset)))))))
 	((let ((dwindow (find-suitable-dynamic-window state code-point))) ; in other dynamic window
 	   (when dwindow
-	     (setf (scsu-state-active-window-index state) dwindow)
-	     (let ((offset (lookup-dynamic-window state dwindow)))
-	       (declare (type (integer 0 #x10FFFF) offset))
-	       ;; TODO: consider change or quote -- lookahead?
-	       (funcall write-func (+ +SC0+ dwindow))
-	       (funcall write-func (+ (- code-point offset) #x80))))))
+	     (locally (declare (type window-index dwindow))
+	       (setf (scsu-state-active-window-index state) dwindow)
+	       (let ((offset (lookup-dynamic-window state dwindow)))
+		 (declare (type unicode-code-point offset))
+		 ;; TODO: consider change or quote -- lookahead?
+		 (funcall write-func (+ +SC0+ dwindow))
+		 (funcall write-func (+ (- code-point offset) #x80)))))))
 	((= code-point #xFEFF)		; derived from SCSUmini
 	 (funcall write-func +SQU+)
 	 (funcall write-func #xFE)
@@ -305,7 +315,7 @@
 	 (encode-unit* state code-point write-func))))
 
 (defun encode-unit*/unicode-mode (state code-point write-func)
-  (declare (type (integer 0 #x10FFFF) code-point)
+  (declare (type unicode-code-point code-point)
 	   (type write-func-type write-func))
   (cond ((<= code-point #x7F)		; Basic Latin
 	 (setf (scsu-state-mode state) :single-byte-mode)
@@ -313,10 +323,11 @@
 	 (encode-unit* state code-point write-func))
 	((let ((dwindow (find-suitable-dynamic-window state code-point))) ; in dynamic window
 	   (when dwindow
-	     (setf (scsu-state-mode state) :single-byte-mode)
-	     (setf (scsu-state-active-window-index state) dwindow)
-	     (funcall write-func (+ +UC0+ dwindow))
-	     (encode-unit* state code-point write-func))))
+	     (locally (declare (type window-index dwindow))
+	       (setf (scsu-state-mode state) :single-byte-mode)
+	       (setf (scsu-state-active-window-index state) dwindow)
+	       (funcall write-func (+ +UC0+ dwindow))
+	       (encode-unit* state code-point write-func)))))
 	(t
 	 (when (<= #xE000 code-point #xF2FF)
 	   (funcall write-func +UQU+))
@@ -324,11 +335,12 @@
 	 (funcall write-func (ldb (byte 8 0) code-point)))))
 
 (defun encode-unit* (state code-point write-func)
-  (declare (type (integer 0 #x10FFFF) code-point)
+  (declare (type unicode-code-point code-point)
 	   (type write-func-type write-func))
   (cond ((> code-point #xFFFF)
 	 (multiple-value-bind (high low)
 	     (encode-to-surrogate-pair code-point)
+	   (declare (type (unsigned-byte 16) high low))
 	   (encode-unit* state high write-func)
 	   (encode-unit* state low write-func)))
 	(t
@@ -350,7 +362,7 @@
   (with-writing-function (put-byte current)
       (bytes dst-start dst-end :element-type (unsigned-byte 8))
     (loop for i of-type fixnum from src-start below src-end
-       as c = (char string i)
+       as c of-type character = (char string i)
        do (encode-unit* state (char-code c) #'put-byte))
     (values bytes current state)))
 
