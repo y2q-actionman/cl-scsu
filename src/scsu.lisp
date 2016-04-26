@@ -43,7 +43,9 @@
 ;;; Condition
 (define-condition scsu-error (error)
   ((src-error-position :accessor scsu-error-src-error-position)
-   (dst-error-position :accessor scsu-error-dst-error-position)))
+   (dst-error-position :accessor scsu-error-dst-error-position)
+   (parental-condition :initarg parental-condition :accessor scsu-error-parental-condition)))
+;; TODO: report bad places.
 
 (define-condition scsu-encode-error (scsu-error)
   ())
@@ -55,12 +57,12 @@
 ;;; Util
 (defmacro with-scsu-error-handling
     ((state &key src dst return) &body body)
-  (alexandria:with-gensyms (state_ m_ d-w_ a-w-i_ src_ dst_)
-    `(let* ((,state_ ,state)
-	    (,m_ (slot-value ,state_ 'mode))
-	    (,d-w_ (slot-value ,state_ 'dynamic-window))
-	    (,a-w-i_ (slot-value ,state_ 'active-window-index))
-	    (,src_ ,src) (,dst_ ,dst))	; Holds a restartable state.
+  (alexandria:with-gensyms (%state %m %d-w %a-w-i %src %dst)
+    `(let* ((,%state ,state)
+	    (,%m (slot-value ,%state 'mode))
+	    (,%d-w (slot-value ,%state 'dynamic-window))
+	    (,%a-w-i (slot-value ,%state 'active-window-index))
+	    (,%src ,src) (,%dst ,dst))	; Holds a restartable state.
        (restart-case
 	   (handler-bind ((scsu-error
 			   (lambda (c)
@@ -71,46 +73,44 @@
 	     (progn ,@body))
 	 (restore-state ()
 	   :report "Restore SCSU state to a restartable previous state, and return"
-	   (setf (slot-value ,state_ 'mode) ,m_
-		 (slot-value ,state_ 'dynamic-window) ,d-w_
-		 (slot-value ,state_ 'active-window-index) ,a-w-i_)
-	   (funcall ,return ,dst_ ,src_))))))
+	   (setf (slot-value ,%state 'mode) ,%m
+		 (slot-value ,%state 'dynamic-window) ,%d-w
+		 (slot-value ,%state 'active-window-index) ,%a-w-i)
+	   (funcall ,return ,%dst ,%src))))))
 
-(defmacro with-reading-function ((function current)
-				 (buffer start end &key (element-type '(unsigned-byte 8)))
-				 &body body)
+(defmacro with-buffer-accessor ((&key (reader (gensym) reader-supplied-p)
+				      (writer (gensym) writer-supplied-p)
+				      current)
+				   (buffer start end &key (element-type '(unsigned-byte 8)))
+				&body body)
   (alexandria:once-only (buffer start end)
-    `(locally (declare (type fixnum ,start ,end)
-		       (type (array ,element-type (*)) ,buffer))
-       (let ((,current ,start))
-	 (declare (type fixnum ,current))
-	 (flet ((,function ()
+    (alexandria:with-gensyms (%raise-scsu-error)
+      `(locally (declare (type fixnum ,start ,end)
+			 (type (array ,element-type (*)) ,buffer))
+	 (let ((,current ,start))
+	   (declare (type fixnum ,current))
+	   (labels
+	       ((,%raise-scsu-error (&rest args)
+		  (apply #'error 'scsu-error :format-control "Reached to the end of the buffer" args))
+		(,reader ()
 		  (cond ((< ,current ,end)
 			 (prog1 (aref ,buffer ,current)
 			   (incf ,current)))
-			(t
-			 (error 'scsu-error :format-control "Reached to the end of the buffer")))))
-	   ,@body)))))
-
-;; TODO: merge with above
-(defmacro with-writing-function ((function current)
-				 (buffer start end &key (element-type '(unsigned-byte 8)))
-				 &body body)
-  (alexandria:once-only (buffer start end)
-    `(locally (declare (type fixnum ,start ,end)
-		       (type (array ,element-type (*)) ,buffer))
-       (let ((,current ,start))
-	 (declare (type fixnum ,current))
-	 (flet ((,function (c)
+			(t (,%raise-scsu-error))))
+		(,writer (c)
 		  (cond ((< ,current ,end)
 			 (setf (aref ,buffer ,current) c)
 			 (incf ,current))
 			((array-has-fill-pointer-p ,buffer)
-			 (vector-push-extend c ,buffer) ; TODO: wrap error from outer.
+			 (handler-case (vector-push-extend c ,buffer)
+			   (error (c)
+			     (,%raise-scsu-error :parental-condition c))) ; wraps error.
 			 (incf ,current))
 			(t
-			 (error 'scsu-error :format-control "Reached to the end of the string")))))
-	   ,@body)))))
+			 (,%raise-scsu-error)))))
+	     (declare (ignore ,@(if (not reader-supplied-p) `((function ,reader)))
+			      ,@(if (not writer-supplied-p) `((function ,writer)))))
+	     ,@body))))))
 
 
 ;;; Decoder
@@ -220,16 +220,13 @@
 
 (defun decode-unit* (state read-func)
   (declare (type read-func-type read-func))
-  ;; TODO: handle errors
-  ;; TODO: restore state if error??
-  ;; -- bind state to dynamic variables? bind locally? use internal slot? (BAD)
   (let ((code-point 
 	 (ecase (scsu-state-mode state)
 	   (:single-byte-mode (decode-unit*/single-byte-mode state read-func))
 	   (:unicode-mode (decode-unit*/unicode-mode state read-func)))))
     (declare (type (unsigned-byte 16) code-point))
     (cond ((<= #xD800 code-point #xDBFF) ; high surrogate
-	   (let ((low (decode-unit* state read-func))) ; TODO: catch error.
+	   (let ((low (decode-unit* state read-func)))
 	     (declare (type (unsigned-byte 16) low))
 	     (unless (<= #xDC00 low #xDFFF)
 	       (error 'scsu-decode-error
@@ -251,12 +248,11 @@
   (declare (type (array (unsigned-byte 8) *) bytes)
 	   (type fixnum start1 end1 start2 end2)
 	   (type string string))
-  ;; TODO: Don't reduce to last bytes..
-  (with-reading-function (pick-byte src-current)
+  (with-buffer-accessor (:reader pick-byte :current src-current)
       (bytes start1 end1)
-    (with-writing-function (put-char dst-current)
+    (with-buffer-accessor (:writer put-char :current dst-current)
 	(string start2 end2 :element-type character)
-      (loop while (< src-current end1) ; TODO: should return even after a completed control byte.
+      (loop while (< src-current end1)
 	 do (with-scsu-error-handling
 		(state :src src-current :dst dst-current
 		       :return (lambda (dst src)
@@ -274,7 +270,7 @@
 	 (ret-string (first ret-list)))
     (declare (type list ret-list)
 	     (type string ret-string))	     
-    (apply #'values (char ret-string 0) (rest ret-list)))) ; TODO: use a error handler..
+    (apply #'values (char ret-string 0) (rest ret-list)))) ; TODO: use a error handler, if no char decoded.
 
 
 ;;; Encode
@@ -392,7 +388,7 @@
   (declare (type string string)
 	   (type (array (unsigned-byte 8) *) bytes)	   
 	   (type fixnum start1 end1 start2 end2))
-  (with-writing-function (put-byte current)
+  (with-buffer-accessor (:writer put-byte :current current)
       (bytes start2 end2 :element-type (unsigned-byte 8))
     (loop for i of-type fixnum from start1 below end1
        as c of-type character = (char string i)
