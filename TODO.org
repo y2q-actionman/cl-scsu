@@ -14,19 +14,28 @@
   とりあえず、 fixed window フラグを state に入れ、 encode 内部で見るように。
 
 
-- [ ] iconv などが、中途バッファを食った時にどうするかを見る。シフト状態を iconv_t に持つんだっけ？
+- [X] 必要な上位interface
+  {encode,decode}-{string,utf8-vector,utf16-vector,utf32-vector}
+  state省略はこの層の機能かな
+
+  => encode/decode string だけにした。 babel がそうだから。
+
+
+- [X] iconv などが、中途バッファを食った時にどうするかを見る。シフト状態を iconv_t に持つんだっけ？
   iconv のように、 stream ではなく buffer を渡すようにして、状態を戻させる他にない気がする。
   先読みバッファ？
 
-- [ ] macro : handler-bind で error 拾って state を書き戻す
+  => iconv のエラー時には、変換に失敗した所の先頭を差すようにする。
+  なので、そうするような restart を入れた。
+
+- [X] macro : handler-bind で error 拾って state を書き戻す
   とりあえず、 position を書き直すのを入れた。
   どこまで state を戻すかを選べるようにしておきたい。
 
-- [ ] define か unicode-mode の使い分け
+  => 上記 iconv の調査のように、書き戻す restart を定義した。 (~with-scsu-error-handling~)
 
-- [ ] 必要な上位interface
-  {encode,decode}-{string,utf8-vector,utf16-vector,utf32-vector}
-  state省略はこの層の機能かな
+
+- [ ] define か unicode-mode の使い分け
 
 - [ ] stream からの使用??
   string にしてから変換すればよいか。
