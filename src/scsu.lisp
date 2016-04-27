@@ -306,7 +306,7 @@
   (cond ((< code-point #x20)		
 	 (case code-point
 	   ((#x0 #x9 #xA #xD) (progn))
-	   (t (funcall write-func +SQU+))) ; tags are quoted.
+	   (t (funcall write-func +SQ0+))) ; tags are quoted to window 0.
 	 (funcall write-func code-point))
 	((<= code-point #x7F)		; Basic Latin
 	 (funcall write-func code-point))
