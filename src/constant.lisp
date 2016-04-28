@@ -92,6 +92,26 @@
 	     (#xFE #x30A0) ; Katakana
 	     (#xFF #xFF60)))))		; Halfwidth Katakana
 
+(defun find-window-offset-table-index (offset)
+  (declare (type unicode-code-point offset))
+  (case offset
+    (#x00C0 #xF9)	  ; Latin-1 letters + half of Latin Extended-A
+    (#x0250 #xFA)	  ; IPA Extensions
+    (#x0370 #xFB)	  ; Greek
+    (#x0530 #xFC)	  ; Armenian
+    (#x3040 #xFD)	  ; Hiragana
+    (#x30A0 #xFE)	  ; Katakana
+    (#xFF60 #xFF)	  ; Halfwidth Katakana
+    (otherwise
+     (cond
+       ((<= #x0080 offset #x3380)  ; half-blocks from U+0080 to U+3380
+	(/ offset #x80))
+       ((<= #xE000 offset #xFF80)  ; half-blocks from U+E000 to U+FF80
+	(/ (- offset #xAC00) #x80))
+       (t
+	(error "incompressible code-point"))))))
+;; TODO: add tests
+
 (alexandria:define-constant +static-windows+
     #(#x0000	      ; (for quoting of tags used in single-byte mode)
       #x0080	      ; Latin-1 Supplement
@@ -121,7 +141,7 @@
 (declaim (type (array fixnum (8)) +default-positions-for-dynamically-positioned-windows+))
 
 ;;; Utils
-(defun incompressible-code-point-p (code-point)
+(defun incompressible-code-point-p (code-point) ; TODO: inverse
   (declare (type unicode-code-point code-point))
   (<= (+ #x3380 #x7F) code-point (1- #xE000)))
 
@@ -133,7 +153,19 @@
       (let ((in-plane-pos (logand code-point #xFFFF))) ; non-character
 	(<= #xFFFE in-plane-pos #xFFFF))))
 
-(defun split-extended-window-tag (hbyte lbyte)
+(defun encode-extended-window-tag (window offset)
+  (declare (type window-index window)
+	   (type unicode-code-point offset))
+  (let* ((off-tmp (/ (- offset #x10000) #x80))
+	 (hbyte (logand #x1f (/ off-tmp #x100)))
+	 (lbyte (logand #xff off-tmp)))
+    (declare (type unicode-code-point off-tmp)
+	     (type (unsigned-byte 8) hbyte lbyte))
+    (setf (ldb (byte 3 5) hbyte) window) ; set window. FIXME: should make hbyte with one step?
+    (values hbyte lbyte)))
+;; TODO: add tests for {encode/decode}-extended-window-tag
+
+(defun decode-extended-window-tag (hbyte lbyte)
   (declare (type (unsigned-byte 8) hbyte lbyte))
   (values
    (ldb (byte 3 5) hbyte)		; window
