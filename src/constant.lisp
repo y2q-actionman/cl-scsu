@@ -92,10 +92,6 @@
 	     (#xFE #x30A0) ; Katakana
 	     (#xFF #xFF60)))))		; Halfwidth Katakana
 
-(defun incompressible-code-point-p (code-point)
-  (declare (type unicode-code-point code-point))
-  (<= (+ #x3380 #x7F) code-point (1- #xE000)))
-
 (alexandria:define-constant +static-windows+
     #(#x0000	      ; (for quoting of tags used in single-byte mode)
       #x0080	      ; Latin-1 Supplement
@@ -125,6 +121,18 @@
 (declaim (type (array fixnum (8)) +default-positions-for-dynamically-positioned-windows+))
 
 ;;; Utils
+(defun incompressible-code-point-p (code-point)
+  (declare (type unicode-code-point code-point))
+  (<= (+ #x3380 #x7F) code-point (1- #xE000)))
+
+(defun standalone-character-p (code-point)
+  (declare (type unicode-code-point code-point))
+  (or (= code-point #xFEFF)		; signature
+      (<= #xFDD0 code-point #xFDEF)	; non-character
+      (<= #xFFF0 code-point #xFFFD)	; specials
+      (let ((in-plane-pos (logand code-point #xFFFF))) ; non-character
+	(<= #xFFFE in-plane-pos #xFFFF))))
+
 (defun split-extended-window-tag (hbyte lbyte)
   (declare (type (unsigned-byte 8) hbyte lbyte))
   (values
