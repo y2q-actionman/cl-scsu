@@ -281,6 +281,9 @@
   (declare (type unicode-code-point offset code-point))
   (<= offset code-point (+ offset #x7f)))
 
+(defun in-active-window-p (state code-point)
+  (in-window-p (scsu-state-active-window-offset state) code-point))
+
 (defun find-suitable-window* (code-point offset-func)
   (declare (type unicode-code-point code-point)
 	   (type (function (fixnum)) offset-func))
@@ -307,8 +310,8 @@
   (funcall write-func (ldb (byte 8 8) code-point))
   (funcall write-func (ldb (byte 8 0) code-point)))
 
-(defun encode-unit*/single-byte-mode (state code-point write-func)
-  (declare (type unicode-code-point code-point)
+(defun encode-unit*/single-byte-mode (state code-point next-code-point write-func)
+  (declare (type unicode-code-point code-point next-code-point)
 	   (type write-func-type write-func))
   (cond ((< code-point #x20)		
 	 (case code-point
@@ -317,7 +320,7 @@
 	 (funcall write-func code-point))
 	((<= code-point #x7F)		; Basic Latin
 	 (funcall write-func code-point))
-	((in-window-p (scsu-state-active-window-offset state) code-point) ; in current dynamic window
+	((in-active-window-p state code-point) ; in current dynamic window
 	 (let ((offset (scsu-state-active-window-offset state)))
 	   (declare (type unicode-code-point offset))
 	   (funcall write-func (+ (- code-point offset) #x80))))
@@ -337,51 +340,63 @@
 		 ;; TODO: consider change or quote -- lookahead?
 		 (funcall write-func (+ +SC0+ dwindow))
 		 (funcall write-func (+ (- code-point offset) #x80)))))))
-	((standalone-character-p code-point) ; TODO: or, not consective
+	
+	;; Not in current window. We must quote it, define a new window, or use unicode-mode.
+	((or (standalone-character-p code-point) ; quote unicode.
+	     ;; not both suitable for unicode-mode => next char can be encoded smally.
+	     (or (<= next-code-point #x7F)
+		 (in-active-window-p state next-code-point)
+		 (find-suitable-static-window next-code-point)
+		 (find-suitable-dynamic-window state next-code-point) ; too heavy?
+		 ))
+	 ;; TODO: add test code for this part.
 	 (encode-quote-unicode code-point write-func))
-	;; TODO:
-	;; Define a new window, or goto unicode mode
-	;; not-compressible => Unicode mode
-	((or (incompressible-code-point-p code-point)
-	     (scsu-state-fixed-window-p state)
-	     t)				; TODO: change to a good function..
+	((and (not (incompressible-code-point-p code-point)) ; define window
+	      (not (scsu-state-fixed-window-p state))
+	      ;; TODO: same window (= (logandc2 code-point #x7F) (logandc2 next-code-point #x7F)))
+	      ;; TODO: lookahead
+	      nil)     ; TODO: change to a good function..
+	 (error "under implementation"))
+	(t				; goto unicode-mode.
 	 (funcall write-func +SCU+)
 	 (setf (scsu-state-mode state) :unicode-mode)
-	 (encode-unit* state code-point write-func))))
+	 (encode-unit* state code-point next-code-point write-func))))
 
-(defun encode-unit*/unicode-mode (state code-point write-func)
-  (declare (type unicode-code-point code-point)
+(defun encode-unit*/unicode-mode (state code-point next-code-point write-func)
+  (declare (type unicode-code-point code-point next-code-point)
 	   (type write-func-type write-func))
   (cond ((<= code-point #x7F)		; Basic Latin
 	 (setf (scsu-state-mode state) :single-byte-mode)
 	 (funcall write-func (+ +UC0+ (scsu-state-active-window-index state)))
-	 (encode-unit* state code-point write-func))
+	 (encode-unit* state code-point next-code-point write-func))
 	((let ((dwindow (find-suitable-dynamic-window state code-point))) ; in dynamic window
 	   (when dwindow
 	     (locally (declare (type window-index dwindow))
 	       (setf (scsu-state-mode state) :single-byte-mode)
 	       (setf (scsu-state-active-window-index state) dwindow)
 	       (funcall write-func (+ +UC0+ dwindow))
-	       (encode-unit* state code-point write-func)))))
+	       (encode-unit* state code-point next-code-point write-func)))))
 	(t
 	 (when (<= #xE000 code-point #xF2FF)
 	   (funcall write-func +UQU+))
 	 (funcall write-func (ldb (byte 8 8) code-point))
 	 (funcall write-func (ldb (byte 8 0) code-point)))))
 
-(defun encode-unit* (state code-point write-func)
-  (declare (type unicode-code-point code-point)
+(defun encode-unit* (state code-point next-code-point write-func)
+  (declare (type unicode-code-point code-point next-code-point)
 	   (type write-func-type write-func))
-  (cond ((> code-point #xFFFF)
+  (cond ((> code-point #xFFFF)		; TODO: use define-window-extended???
 	 (multiple-value-bind (high low)
 	     (encode-to-surrogate-pair code-point)
 	   (declare (type (unsigned-byte 16) high low))
-	   (encode-unit* state high write-func)
-	   (encode-unit* state low write-func)))
+	   (encode-unit* state high low write-func)
+	   (encode-unit* state low next-code-point write-func)))
 	(t
 	 (ecase (scsu-state-mode state)
-	   (:single-byte-mode (encode-unit*/single-byte-mode state code-point write-func))
-	   (:unicode-mode (encode-unit*/unicode-mode state code-point write-func))))))
+	   (:single-byte-mode
+	    (encode-unit*/single-byte-mode state code-point next-code-point write-func))
+	   (:unicode-mode
+	    (encode-unit*/unicode-mode state code-point next-code-point write-func))))))
 
 (defun encode-from-string (string
 			   &key (start1 0) (end1 (length string))
@@ -396,13 +411,15 @@
   (with-buffer-accessor (:writer put-byte :current dst-current)
       (bytes start2 end2 :element-type (unsigned-byte 8))
     (loop for i of-type fixnum from start1 below end1
-       as c of-type character = (char string i)
+       for next of-type fixnum from (1+ start1)
+       as code-point = (char-code (char string i)) then next-code-point
+       as next-code-point = (if (>= next end1) nil (char-code (char string next)))
        do (with-scsu-error-handling
 	      (state :src i :dst dst-current
 		     :return (lambda (dst src)
 			       (return-from encode-from-string
 				 (values bytes dst src state))))
-	    (encode-unit* state (char-code c) #'put-byte)))
+	    (encode-unit* state code-point next-code-point #'put-byte)))
     (values bytes dst-current end1 state)))
 
 ;; The required length is out of BMP case.
