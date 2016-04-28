@@ -314,7 +314,7 @@
 (defun use-define-window-p (state code-point next-code-point lookahead-func)
   (declare (type unicode-code-point code-point next-code-point)
 	   (type lookahead-func-type lookahead-func))
-  (and (not (incompressible-code-point-p code-point))
+  (and (compressible-code-point-p code-point)
        (not (scsu-state-fixed-window-p state))
        (same-window-p code-point next-code-point) ; next is in same window
        (>= (funcall lookahead-func code-point) +define-window-threshold+)))

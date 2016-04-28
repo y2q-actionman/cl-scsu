@@ -141,9 +141,9 @@
 (declaim (type (array fixnum (8)) +default-positions-for-dynamically-positioned-windows+))
 
 ;;; Utils
-(defun incompressible-code-point-p (code-point) ; TODO: inverse
+(defun compressible-code-point-p (code-point)
   (declare (type unicode-code-point code-point))
-  (<= (+ #x3380 #x7F) code-point (1- #xE000)))
+  (not (<= (+ #x3380 #x80) code-point (1- #xE000))))
 
 (defun standalone-character-p (code-point)
   (declare (type unicode-code-point code-point))
