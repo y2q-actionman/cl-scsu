@@ -1,7 +1,7 @@
 (in-package :scsu)
 
 ;;; State
-(defparameter *scsu-state-default-fixed-window-p* nil)
+(defparameter *scsu-state-default-fix-dynamic-window* nil)
 
 (defclass scsu-state ()
   ((mode :initform :single-byte-mode :accessor scsu-state-mode)
@@ -9,8 +9,9 @@
     :initform +default-positions-for-dynamically-positioned-windows+
     :accessor scsu-state-dynamic-window)
    (active-window-index :initform 0 :accessor scsu-state-active-window-index)
-   (fixed-window-p :initarg :fixed-window :initform *scsu-state-default-fixed-window-p*
-		   :accessor scsu-state-fixed-window-p)))
+   (fix-dynamic-window :initarg :fixed-window :initform *scsu-state-default-fix-dynamic-window*
+		       :accessor scsu-state-fix-dynamic-window
+		       :type boolean)))
 
 (defun lookup-dynamic-window (state window)
   (declare (type window-index window))
@@ -249,7 +250,7 @@
 	   (type string string))
   (with-buffer-accessor (:reader pick-byte :current src-current)
       (bytes start1 end1 :element-type (unsigned-byte 8))
-    (with-buffer-accessor (:writer put-char :current dst-current) ; TODO: remove, convert to loop.
+    (with-buffer-accessor (:writer put-char :current dst-current)
 	(string start2 end2 :element-type character)
       (loop while (< src-current end1)
 	 do (with-scsu-error-handling
@@ -313,7 +314,7 @@
   (declare (type unicode-code-point code-point next-code-point)
 	   (type lookahead-func-type lookahead-func))
   (and (compressible-code-point-p code-point)
-       (not (scsu-state-fixed-window-p state))
+       (not (scsu-state-fix-dynamic-window state))
        (same-window-p code-point next-code-point) ; next is in same window
        (funcall lookahead-func code-point)))
 
@@ -443,26 +444,27 @@
 						:fill-pointer 0 :adjustable t
 						:element-type '(unsigned-byte 8)))
 			     (start2 0) (end2 (length bytes))
-			     (state (make-instance 'scsu-state)))
+			     (state-initargs nil)
+			     (state (apply 'make-instance 'scsu-state state-initargs)))
   (declare (type string string)
 	   (type (array (unsigned-byte 8) *) bytes)	   
 	   (type fixnum start1 end1 start2 end2))
   (with-buffer-accessor (:writer put-byte :current dst-current)
       (bytes start2 end2 :element-type (unsigned-byte 8))
-    (loop for i of-type fixnum from start1 below end1
+    (loop for src-current of-type fixnum from start1 below end1
        for next of-type fixnum from (1+ start1)
-       as code-point = (char-code (char string i)) then next-code-point
+       as code-point = (char-code (char string  src-current)) then next-code-point
        as next-code-point = (if (>= next end1) nil (char-code (char string next)))
        do (flet ((lookahead-function (code-point)
 		   (declare (type unicode-code-point code-point))
-		   (loop for j of-type fixnum from i below end1
+		   (loop for j of-type fixnum from src-current below end1
 		      if (same-window-p code-point (code-char (char string j)))
 		      count it into same-window-chars
 		      and if (>= same-window-chars +define-window-threshold+)
 		      return t
 		      finally (return nil))))
 	    (with-scsu-error-handling
-	      (state :src i :dst dst-current
+	      (state :src src-current :dst dst-current
 		     :return (lambda (dst src)
 			       (return-from encode-from-string
 				 (values bytes dst src state))))

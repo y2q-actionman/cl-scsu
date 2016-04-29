@@ -35,7 +35,7 @@
   => 上記 iconv の調査のように、書き戻す restart を定義した。 (~with-scsu-error-handling~)
 
 
-- [ ] define か unicode-mode の使い分け
+- [X] define か unicode-mode の使い分け
 
 - [ ] stream からの使用??
   string にしてから変換すればよいか。
@@ -48,6 +48,9 @@
 
   => 面倒。特にサロゲートとにの組み合わせを、上位関数でやらないといけないのは嫌。
   ちょっと例外的な系の効率は、まあ置いておけるかも。
+
+- decode の char writer を普通の loop にする。
+  => きちんとエラーを投げたり、 vector-push などを使う必要もあるので、 with-buffer-accessor 必要。
 
   
 * 仕様
