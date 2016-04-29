@@ -1,4 +1,4 @@
-(in-package :scsu)
+(in-package :cl-scsu)
 
 ;;; State
 (defparameter *scsu-state-default-fix-dynamic-window* nil)

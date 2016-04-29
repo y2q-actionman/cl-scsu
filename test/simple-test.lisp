@@ -1,4 +1,4 @@
-(in-package :scsu)
+(in-package :cl-scsu.test)
 
 (defun test-char (char)
   (format t "~&Character ~C, code ~X~%" char (char-code char))

@@ -1,4 +1,4 @@
-(in-package :scsu)
+(in-package :cl-scsu)
 
 (defconstant +window-count+ 8 "number of static or dynamic windows")
 

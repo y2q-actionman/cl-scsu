@@ -1,6 +1,6 @@
 (in-package :cl-user)
 
-(defpackage :scsu
+(defpackage :cl-scsu
   (:use :cl)
   (:export
    ;; scsu-state object

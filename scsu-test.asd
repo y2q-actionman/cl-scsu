@@ -14,9 +14,9 @@
   ((:module "test"
     :serial t    
     :components
-    ( ;; (:file "package")
+    ((:file "package")
      (:file "simple-test")
-     )))
+     (:file "main"))))
   :perform (asdf:test-op (o s)
   			 (uiop:symbol-call '#:cl-scsu.test '#:main)))
 
