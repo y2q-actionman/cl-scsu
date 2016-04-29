@@ -45,8 +45,15 @@
 (define-condition scsu-error (error)
   ((src-error-position :accessor scsu-error-src-error-position)
    (dst-error-position :accessor scsu-error-dst-error-position)
-   (parental-condition :initarg parental-condition :accessor scsu-error-parental-condition)))
-;; TODO: report bad places.
+   (parental-condition :initarg parental-condition :accessor scsu-error-parental-condition))
+  (:report (lambda (condition stream)
+	     (with-accessors ((original-format simple-condition-format-control)
+			      (original-args simple-condition-format-arguments)
+			      (src-pos scsu-error-src-error-position)
+			      (dst-pos scsu-error-dst-error-position))
+		 condition
+	       (format stream "~? [at SRC ~A, DST ~A] "
+		       original-format original-args src-pos dst-pos)))))
 
 (define-condition scsu-encode-error (scsu-error)
   ())
@@ -90,24 +97,25 @@
 	 (let ((,current ,start))
 	   (declare (type fixnum ,current))
 	   (labels
-	       ((,%raise-scsu-error (&rest args)
-		  (apply #'error 'scsu-error :format-control "Reached to the end of the buffer" args))
+	       ((,%raise-scsu-error (fmt &rest args)
+		  (apply #'error 'scsu-error :format-control fmt args))
 		(,reader ()
 		  (cond ((< ,current ,end)
 			 (prog1 (aref ,buffer ,current)
 			   (incf ,current)))
-			(t (,%raise-scsu-error))))
+			(t (,%raise-scsu-error "Reached to the end of the read buffer"))))
 		(,writer (c)
-		  (cond ((< ,current ,end)
-			 (setf (aref ,buffer ,current) c)
-			 (incf ,current))
-			((array-has-fill-pointer-p ,buffer)
-			 (handler-case (vector-push-extend c ,buffer)
-			   (error (c)
-			     (,%raise-scsu-error :parental-condition c))) ; wraps error.
-			 (incf ,current))
-			(t
-			 (,%raise-scsu-error)))))
+		  (let ((fmt "Reached to the end of the write buffer"))
+		    (cond ((< ,current ,end)
+			   (setf (aref ,buffer ,current) c)
+			   (incf ,current))
+			  ((array-has-fill-pointer-p ,buffer)
+			   (handler-case (vector-push-extend c ,buffer)
+			     (error (c)
+			       (,%raise-scsu-error fmt :parental-condition c))) ; wraps error.
+			   (incf ,current))
+			  (t
+			   (,%raise-scsu-error fmt))))))
 	     (declare (ignore ,@(if (not reader-supplied-p) `((function ,reader)))
 			      ,@(if (not writer-supplied-p) `((function ,writer)))))
 	     ,@body))))))
