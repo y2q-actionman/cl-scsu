@@ -69,12 +69,6 @@
 	       (format stream "~? [at SRC ~A, DST ~A] "
 		       original-format original-args src-pos dst-pos)))))
 
-(define-condition scsu-encode-error (scsu-error)
-  ())
-
-(define-condition scsu-decode-error (scsu-error)
-  ())
-
 
 ;;; Util
 (defmacro with-scsu-error-handling
@@ -190,7 +184,7 @@
 	      (decode-define-window-extended state read-func)
 	      (decode-unit* state read-func))
 	     (#xC
-	      (error 'scsu-decode-error
+	      (error 'scsu-error
 		     :format-control "reserved byte ~A is used"
 		     :format-arguments (list byte)))
 	     (#.+SQU+			; Quote Unicode
@@ -239,7 +233,7 @@
 	   (setf (scsu-state-mode state) :single-byte-mode)
 	   (decode-unit* state read-func))
 	  (#xF2
-	   (error 'scsu-decode-error
+	   (error 'scsu-error
 		  :format-control "reserved byte ~A is used"
 		  :format-arguments (list byte)))))))
 
@@ -254,11 +248,11 @@
 	   (let ((low (decode-unit* state read-func)))
 	     (declare (type (unsigned-byte 16) low))
 	     (unless (<= #xDC00 low #xDFFF)
-	       (error 'scsu-decode-error
+	       (error 'scsu-error
 		      :format-control "High surrogate appeared alone"))
 	     (decode-from-surrogate-pair code-point low)))
 	  ((<= #xDC00 code-point #xDFFF) ; low surrogate
-	   (error 'scsu-decode-error
+	   (error 'scsu-error
 		  :format-control "Low surrogate appeared alone"))
 	  (t
 	   code-point))))
