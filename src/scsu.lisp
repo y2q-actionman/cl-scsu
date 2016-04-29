@@ -343,6 +343,14 @@
 	     (funcall write-func hbyte)
 	     (funcall write-func lbyte))))))
 
+(defun encode-SMP-as-surrogate-pair (state code-point next-code-point write-func lookahead-func)
+  (declare (type unicode-code-point code-point next-code-point))
+  (multiple-value-bind (high low)
+      (encode-to-surrogate-pair code-point)
+    (declare (type (unsigned-byte 16) high low))
+    (encode-unit* state high low write-func lookahead-func)
+    (encode-unit* state low next-code-point write-func lookahead-func)))
+
 (defun encode-unit*/single-byte-mode (state code-point next-code-point write-func lookahead-func)
   (declare (type unicode-code-point code-point)
 	   (type (or null unicode-code-point) next-code-point)
@@ -391,6 +399,8 @@
 	 ;; define window
 	 (encode-define-window state code-point write-func +SD0+ +SDX+)
 	 (encode-unit* state code-point next-code-point write-func lookahead-func))
+	((> code-point #xFFFF)		; use surrogate pair
+	 (encode-SMP-as-surrogate-pair state code-point next-code-point write-func lookahead-func))
 	(t
 	 ;; goto unicode-mode.
 	 (funcall write-func +SCU+)
@@ -414,6 +424,8 @@
 	((use-define-window-p state code-point next-code-point lookahead-func) ; define window
 	 (encode-define-window state code-point write-func +UD0+ +UDX+)
 	 (encode-unit* state code-point next-code-point write-func lookahead-func))
+	((> code-point #xFFFF)		; use surrogate pair
+	 (encode-SMP-as-surrogate-pair state code-point next-code-point write-func lookahead-func))
 	(t
 	 (when (<= #xE000 code-point #xF2FF)
 	   (funcall write-func +UQU+))
@@ -423,18 +435,11 @@
 (defun encode-unit* (state code-point next-code-point write-func lookahead-func)
   (declare (type unicode-code-point code-point next-code-point)
 	   (type write-func-type write-func))
-  (cond ((> code-point #xFFFF)		; TODO: use define-window-extended???
-	 (multiple-value-bind (high low)
-	     (encode-to-surrogate-pair code-point)
-	   (declare (type (unsigned-byte 16) high low))
-	   (encode-unit* state high low write-func lookahead-func)
-	   (encode-unit* state low next-code-point write-func lookahead-func)))
-	(t
-	 (ecase (scsu-state-mode state)
-	   (:single-byte-mode
-	    (encode-unit*/single-byte-mode state code-point next-code-point write-func lookahead-func))
-	   (:unicode-mode
-	    (encode-unit*/unicode-mode state code-point next-code-point write-func lookahead-func))))))
+  (ecase (scsu-state-mode state)
+    (:single-byte-mode
+     (encode-unit*/single-byte-mode state code-point next-code-point write-func lookahead-func))
+    (:unicode-mode
+     (encode-unit*/unicode-mode state code-point next-code-point write-func lookahead-func))))
 
 (defconstant +define-window-threshold+ 4)
 
