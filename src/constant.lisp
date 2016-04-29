@@ -13,7 +13,7 @@
 (defmacro define-window-find-function (name lower)
   `(defun ,name (byte)
      (declare (type (unsigned-byte 8) byte))
-     (assert (<= ,lower byte (+ ,lower +window-count+))) ; TODO: move to type decl.
+     ;; (assert (<= ,lower byte (+ ,lower +window-count+))) ; TODO: move to type decl.
      (- byte ,lower)))
 
 ;;; Single-Byte Mode Tag Values
