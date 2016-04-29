@@ -9,6 +9,10 @@
     :initform +default-positions-for-dynamically-positioned-windows+
     :accessor scsu-state-dynamic-window)
    (active-window-index :initform 0 :accessor scsu-state-active-window-index)
+   (timestamp-vector :initform (make-array +window-count+ :element-type 'fixnum
+					   :initial-element 0)
+		     :accessor scsu-state-timestamp-vector)
+   (current-timestamp :initform 0 :accessor scsu-state-current-timestamp :type fixnum)
    (fix-dynamic-window :initarg :fixed-window :initform *scsu-state-default-fix-dynamic-window*
 		       :accessor scsu-state-fix-dynamic-window
 		       :type boolean)))
@@ -34,10 +38,20 @@
   (setf (lookup-dynamic-window state (scsu-state-active-window-index state))
 	offset))
 
+(defmethod scsu-state-timestamp (state window)
+  (declare (type window-index window))
+  (aref (scsu-state-timestamp-vector state) window))
+
+(defmethod (setf scsu-state-timestamp) (val state window)
+  (declare (type window-index window))
+  (setf (aref (scsu-state-timestamp-vector state) window) val))
+
 (defmethod scsu-state-reset ((state scsu-state))
   (slot-makunbound state 'mode)
   (slot-makunbound state 'dynamic-window)
   (slot-makunbound state 'active-window-index)
+  (slot-makunbound state 'timestamp-vector)
+  (slot-makunbound state 'current-timestamp)
   (shared-initialize state t))
 
 
@@ -134,6 +148,9 @@
 
 (defun scsu-change-to-window (state window)
   (declare (type window-index window))
+  ;; update LRU entry
+  (let ((timestamp (incf (scsu-state-current-timestamp state))))
+    (setf (scsu-state-timestamp state window) timestamp))
   (setf (scsu-state-active-window-index state) window))
 
 (defun scsu-define-window (state window offset)
@@ -330,8 +347,14 @@
        (funcall lookahead-func code-point)))
 
 (defun find-LRU-dynamic-window (state)
-  ;; TODO: right implement
-  (random +window-count+))
+  (loop with ret of-type fixnum = 0
+     with min of-type fixnum = (scsu-state-timestamp state 0)
+     for i of-type fixnum from 1 below +window-count+
+     as ts of-type fixnum = (scsu-state-timestamp state i)
+     when (<= ts min) ; If timestamps are same (at beginning), latter entries are used.
+     do (setf ret i
+	      min ts)
+     finally (return ret)))
 
 (defun encode-define-window (state code-point write-func define-window-tag define-extended-tag)
   (declare (type unicode-code-point code-point)
