@@ -309,15 +309,13 @@
 			   (declare (type window-index i))
 			   (lookup-dynamic-window state i))))
 
-(defconstant +define-window-threshold+ 4)
-
 (defun use-define-window-p (state code-point next-code-point lookahead-func)
   (declare (type unicode-code-point code-point next-code-point)
 	   (type lookahead-func-type lookahead-func))
   (and (compressible-code-point-p code-point)
        (not (scsu-state-fixed-window-p state))
        (same-window-p code-point next-code-point) ; next is in same window
-       (>= (funcall lookahead-func code-point) +define-window-threshold+)))
+       (funcall lookahead-func code-point)))
 
 (defun find-LRU-dynamic-window (state)
   ;; TODO: right implement
@@ -437,6 +435,8 @@
 	   (:unicode-mode
 	    (encode-unit*/unicode-mode state code-point next-code-point write-func lookahead-func))))))
 
+(defconstant +define-window-threshold+ 4)
+
 (defun encode-from-string (string
 			   &key (start1 0) (end1 (length string))
 			     (bytes (make-array (length string) ; no way to expect length..
@@ -457,7 +457,10 @@
 		   (declare (type unicode-code-point code-point))
 		   (loop for j of-type fixnum from i below end1
 		      if (same-window-p code-point (code-char (char string j)))
-		      count it)))
+		      count it into same-window-chars
+		      and if (>= same-window-chars +define-window-threshold+)
+		      return t
+		      finally (return nil))))
 	    (with-scsu-error-handling
 	      (state :src i :dst dst-current
 		     :return (lambda (dst src)
