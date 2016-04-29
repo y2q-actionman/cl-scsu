@@ -3,13 +3,12 @@
 (defun test-char (char)
   (format t "~&Character ~C, code ~X~%" char (char-code char))
   (multiple-value-bind (buffer current)
-      (encode-unit-to-buffer (char-code char))
+      (encode-unit-to-bytes char)
     (format t "Buffer:~A, Current ~A~%" buffer current)
-    (let* ((ret (decode-unit-to-buffer buffer))
-	   (ret-char (code-char ret)))
-      (format t "~&Restored code ~X, char ~C~%" ret ret-char)
-      (assert (= char ret-char))
-      ret-char)))
+    (let* ((ret (decode-unit-from-bytes buffer)))
+      (format t "~&Restored char ~C~%" ret)
+      (assert (char= char ret))
+      ret)))
 
 #|
 (test-char #\a)

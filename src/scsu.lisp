@@ -271,14 +271,17 @@
 		(put-char (code-char code-point)))))
       (values string dst-current src-current state))))
 
-(defun decode-unit-to-bytes (bytes &key (start 0) (end (length bytes))
-				     (state (make-instance 'scsu-state)))
+(defun decode-unit-from-bytes (bytes &key (start 0) (end (length bytes))
+				       (state (make-instance 'scsu-state)))
   (let* ((ret-list (multiple-value-list 
 		    (decode-to-string bytes :start1 start :end1 end :state state)))
-	 (ret-string (first ret-list)))
+	 (ret-string (first ret-list))
+	 (ret-len (second ret-list))
+	 (ret-char (if (>= ret-len 1) (char ret-string 0) nil)))
     (declare (type list ret-list)
-	     (type string ret-string))	     
-    (apply #'values (char ret-string 0) (rest ret-list)))) ; TODO: use a error handler, if no char decoded.
+	     (type string ret-string)
+	     (type fixnum ret-len))
+    (apply #'values ret-char (rest ret-list))))
 
 
 ;;; Encode
@@ -489,19 +492,19 @@
 ;; - SDX, <high>, <low>, <byte>
 (defconstant +encode-unit-default-bytes-length+ 6)
 
-(defun encode-unit-to-bytes (code-point
+(defun encode-unit-to-bytes (char
 			     &key (bytes (make-array +encode-unit-default-bytes-length+
 						     :fill-pointer 0
 						     :element-type '(unsigned-byte 8)))
 			       (start 0)
 			       (end (length bytes))
 			       (state (make-instance 'scsu-state)))
-  (declare (type fixnum start end)
+  (declare (type character char)
+	   (type fixnum start end)
 	   (type (array (unsigned-byte 8) *) bytes))
-  (check-type code-point unicode-code-point)
   (let ((tmp-string (make-array 1 :element-type 'character)))
     (declare (type simple-string tmp-string)
 	     (dynamic-extent tmp-string))
-    (setf (schar tmp-string 0) code-point)
+    (setf (schar tmp-string 0) char)
     (encode-from-string tmp-string :start1 0 :end1 1
 			:bytes bytes :start2 start :end2 end :state state)))
