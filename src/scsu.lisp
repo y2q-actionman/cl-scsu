@@ -450,6 +450,7 @@
 	       (funcall write-func (+ +UC0+ dwindow))
 	       (encode-unit* state code-point next-code-point write-func lookahead-func)))))
 	((use-define-window-p state code-point next-code-point lookahead-func) ; define window
+	 (setf (scsu-state-mode state) :single-byte-mode)
 	 (encode-define-window state code-point write-func +UD0+ +UDX+)
 	 (encode-unit* state code-point next-code-point write-func lookahead-func))
 	((> code-point #xFFFF)		; use surrogate pair
@@ -491,7 +492,7 @@
        do (flet ((lookahead-function (code-point)
 		   (declare (type unicode-code-point code-point))
 		   (loop for j of-type fixnum from src-current below end1
-		      if (same-window-p code-point (code-char (char string j)))
+		      if (same-window-p code-point (char-code (char string j)))
 		      count it into same-window-chars
 		      and if (>= same-window-chars +define-window-threshold+)
 		      return t
