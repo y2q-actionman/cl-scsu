@@ -171,6 +171,7 @@
 	     ((#x0 #x9 #xA #xD)		; pass
 	      byte)
 	     ((#.+SQ0+ #.+SQ1+ #.+SQ2+ #.+SQ3+ #.+SQ4+ #.+SQ5+ #.+SQ6+ #.+SQ7+) ; Quote from Window
+	      ;; TODO: update LRU timestamp
 	      (let ((window (find-SQn-window byte))
 		    (next-byte (funcall read-func)))
 		(declare (type window-index window)
