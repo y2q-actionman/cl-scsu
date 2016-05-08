@@ -15,7 +15,12 @@
     :serial t    
     :components
     ((:file "package")
-     (:file "simple-test")
+     ;; (:file "simple-test")
+     (:file "util")
+     (:file "1_examples")
+     (:file "2_codepoints")
+     (:file "3_coverage")
+     (:file "4_interface")
      (:file "main"))))
   :perform (asdf:test-op (o s)
   			 (uiop:symbol-call '#:cl-scsu.test '#:main)))
