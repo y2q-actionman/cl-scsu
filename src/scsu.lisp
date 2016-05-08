@@ -238,24 +238,9 @@
 		  :format-arguments (list byte)))))))
 
 (defun decode-unit* (state read-func)
-  (declare (type read-func-type read-func))
-  (let ((code-point 
-	 (ecase (scsu-state-mode state)
-	   (:single-byte-mode (decode-unit*/single-byte-mode state read-func))
-	   (:unicode-mode (decode-unit*/unicode-mode state read-func)))))
-    (declare (type (unsigned-byte 16) code-point))
-    (cond ((<= #xD800 code-point #xDBFF) ; high surrogate
-	   (let ((low (decode-unit* state read-func)))
-	     (declare (type (unsigned-byte 16) low))
-	     (unless (<= #xDC00 low #xDFFF)
-	       (error 'scsu-error
-		      :format-control "High surrogate appeared alone"))
-	     (decode-from-surrogate-pair code-point low)))
-	  ((<= #xDC00 code-point #xDFFF) ; low surrogate
-	   (error 'scsu-error
-		  :format-control "Low surrogate appeared alone"))
-	  (t
-	   code-point))))
+  (ecase (scsu-state-mode state)
+    (:single-byte-mode (decode-unit*/single-byte-mode state read-func))
+    (:unicode-mode (decode-unit*/unicode-mode state read-func))))
 
 (defun decode-to-string (bytes
 			 &key (start1 0) (end1 (length bytes))
@@ -279,7 +264,29 @@
 				   (values string dst src state))))
 	      (let ((code-point (decode-unit* state #'pick-byte)))
 		(declare (type unicode-code-point code-point))
-		(put-char (code-char code-point)))))
+		;; TODO: cleanup this part
+		(cond ((<= #xD800 code-point #xDBFF) ; high surrogate
+		       (let ((low (decode-unit* state #'pick-byte)))
+			 (declare (type (unsigned-byte 16) low))
+			 (unless (<= #xDC00 low #xDFFF)
+			   (error 'scsu-error
+				  :format-control "High surrogate appeared alone"))
+			 (cond ((> char-code-limit #xFFFF) ; For UTF-16 string implementation (i.e. Allegro CL)
+				(put-char (code-char code-point))
+				(put-char (code-char low)))
+			       (t
+				(put-char (code-char
+					   (decode-from-surrogate-pair code-point low)))))))
+		      ((<= #xDC00 code-point #xDFFF) ; low surrogate
+		       (error 'scsu-error
+			      :format-control "Low surrogate appeared alone"))
+		      ((>= code-point char-code-limit) ; for UTF-16 string implementation.
+		       (multiple-value-bind (high low)
+			   (encode-to-surrogate-pair code-point)
+			 (put-char (code-char high))
+			 (put-char (code-char low))))
+		      (t
+		       (put-char (code-char code-point)))))))
       (values string dst-current src-current state))))
 
 (defun decode-unit-from-bytes (bytes &key (start 0) (end (length bytes))

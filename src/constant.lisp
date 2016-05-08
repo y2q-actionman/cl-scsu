@@ -177,10 +177,12 @@
   (declare (type unicode-code-point code-point))
   (if (<= code-point #xFFFF)
       code-point
-      (let* ((high (+ #xD800 (- (ldb (byte 10 10) code-point)
-				(ash #x10000 -10))))
-	     (low (+ #xDC00 (ldb (byte 10 0) code-point))))
+      (let* ((off-code-point (- code-point #x10000))
+	     (high (+ #xD800 (ldb (byte 10 10) off-code-point)))
+	     (low (+ #xDC00 (ldb (byte 10 0) off-code-point))))
+	(declare (type (integer 0 #xFFFFF) off-code-point))
 	(values high low))))
+;; TODO: add tests. (Or use other implementation?)
 
 (defun decode-from-surrogate-pair (high low)
   (declare (type (unsigned-byte 8) high low))
