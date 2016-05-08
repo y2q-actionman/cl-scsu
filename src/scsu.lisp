@@ -5,9 +5,8 @@
 
 (defclass scsu-state ()
   ((mode :initform :single-byte-mode :accessor scsu-state-mode)
-   (dynamic-window
-    :initform +default-positions-for-dynamically-positioned-windows+
-    :accessor scsu-state-dynamic-window)
+   (dynamic-window :initform nil	; see lookup-dynamic-window
+		   :accessor scsu-state-dynamic-window)
    (active-window-index :initform 0 :accessor scsu-state-active-window-index)
    (timestamp-vector :initform (make-array +window-count+ :element-type 'fixnum
 					   :initial-element 0)
@@ -17,18 +16,22 @@
 		       :accessor scsu-state-fix-dynamic-window
 		       :type boolean)))
 
-(defun lookup-dynamic-window (state window)
+(defmethod lookup-dynamic-window (state window)
   (declare (type window-index window))
-  (aref (scsu-state-dynamic-window state) window))
+  (let ((dwindow (or (scsu-state-dynamic-window state)
+		     +default-positions-for-dynamically-positioned-windows+)))
+    (declare (type (array fixnum (8)) dwindow))
+    (aref dwindow window)))
 
-(defun (setf lookup-dynamic-window) (offset state window)
+(defmethod (setf lookup-dynamic-window) (offset state window)
   (declare (type unicode-code-point offset)
 	   (type window-index window))
-  (with-accessors ((dwindow scsu-state-dynamic-window))
-      state
-    (when (eq dwindow +default-positions-for-dynamically-positioned-windows+)
-      (setf dwindow (copy-seq +default-positions-for-dynamically-positioned-windows+)))
-    (setf (aref dwindow window) offset)))
+  (let ((dwindow (scsu-state-dynamic-window state)))
+    (when (null dwindow)
+      (setf dwindow (copy-seq +default-positions-for-dynamically-positioned-windows+)
+	    (scsu-state-dynamic-window state) dwindow))
+    (locally (declare (type (array fixnum (8)) dwindow))
+      (setf (aref dwindow window) offset))))
 
 (defmethod scsu-state-active-window-offset (state)
   (lookup-dynamic-window state (scsu-state-active-window-index state)))
@@ -214,29 +217,30 @@
   (declare (type read-func-type read-func))
   (let ((byte (funcall read-func)))
     (declare (type (unsigned-byte 8) byte))
-    (if (or (<= #x00 byte #xDF) (<= #xF3 byte #xFF)) ; MSB
-	(+ (logior (ash byte 8) (funcall read-func)))
-	(ecase byte
-	  ((#.+UC0+ #.+UC1+ #.+UC2+ #.+UC3+ #.+UC4+ #.+UC5+ #.+UC6+ #.+UC7+) ; Change to Window
-	   (scsu-change-to-window state (find-UCn-window byte))
-	   (setf (scsu-state-mode state) :single-byte-mode)
-	   (decode-unit* state read-func))
-	  ((#.+UD0+ #.+UD1+ #.+UD2+ #.+UD3+ #.+UD4+ #.+UD5+ #.+UD6+ #.+UD7+) ; Define Window
-	   (scsu-define-window state
-			       (find-UDn-window byte)
-			       (lookup-window-offset-table (funcall read-func)))
-	   (setf (scsu-state-mode state) :single-byte-mode)
-	   (decode-unit* state read-func))
-	  (#.+UQU+			; Quote Unicode
-	   (decode-quote-unicode read-func))
-	  (#.+UDX+			; Define Extended
-	   (decode-define-window-extended state read-func)
-	   (setf (scsu-state-mode state) :single-byte-mode)
-	   (decode-unit* state read-func))
-	  (#xF2
-	   (error 'scsu-error
-		  :format-control "reserved byte ~A is used"
-		  :format-arguments (list byte)))))))
+    (case byte
+      ((#.+UC0+ #.+UC1+ #.+UC2+ #.+UC3+ #.+UC4+ #.+UC5+ #.+UC6+ #.+UC7+) ; Change to Window
+       (scsu-change-to-window state (find-UCn-window byte))
+       (setf (scsu-state-mode state) :single-byte-mode)
+       (decode-unit* state read-func))
+      ((#.+UD0+ #.+UD1+ #.+UD2+ #.+UD3+ #.+UD4+ #.+UD5+ #.+UD6+ #.+UD7+) ; Define Window
+       (scsu-define-window state
+			   (find-UDn-window byte)
+			   (lookup-window-offset-table (funcall read-func)))
+       (setf (scsu-state-mode state) :single-byte-mode)
+       (decode-unit* state read-func))
+      (#.+UQU+			; Quote Unicode
+       (decode-quote-unicode read-func))
+      (#.+UDX+			; Define Extended
+       (decode-define-window-extended state read-func)
+       (setf (scsu-state-mode state) :single-byte-mode)
+       (decode-unit* state read-func))
+      (#xF2
+       (error 'scsu-error
+	      :format-control "reserved byte ~A is used"
+	      :format-arguments (list byte)))
+      (otherwise			; MSB of Unicode BMP char.
+       ;; (assert (or (<= #x00 byte #xDF) (<= #xF3 byte #xFF)))
+       (logior (ash byte 8) (funcall read-func))))))
 
 (defun decode-unit* (state read-func)
   (ecase (scsu-state-mode state)

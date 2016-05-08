@@ -156,7 +156,7 @@
 (defun encode-extended-window-tag (window offset)
   (declare (type window-index window)
 	   (type unicode-code-point offset))
-  (let* ((off-tmp (/ (- offset #x10000) #x80))
+  (let* ((off-tmp (/ (- offset #x10000) #x80)) ; TODO: use floor?
 	 (hbyte (logand #x1f (/ off-tmp #x100)))
 	 (lbyte (logand #xff off-tmp)))
     (declare (type unicode-code-point off-tmp)
