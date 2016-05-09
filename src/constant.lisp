@@ -105,12 +105,11 @@
     (otherwise
      (cond
        ((<= #x0080 offset #x3380)  ; half-blocks from U+0080 to U+3380
-	(/ offset #x80))
+	(floor offset #x80))
        ((<= #xE000 offset #xFF80)  ; half-blocks from U+E000 to U+FF80
-	(/ (- offset #xAC00) #x80))
+	(floor (- offset #xAC00) #x80))
        (t
 	(error "incompressible code-point"))))))
-;; TODO: add tests
 
 (alexandria:define-constant +static-windows+
     #(#x0000	      ; (for quoting of tags used in single-byte mode)
@@ -156,14 +155,13 @@
 (defun encode-extended-window-tag (window offset)
   (declare (type window-index window)
 	   (type unicode-code-point offset))
-  (let* ((off-tmp (/ (- offset #x10000) #x80)) ; TODO: use floor?
-	 (hbyte (logand #x1f (/ off-tmp #x100)))
+  (let* ((off-tmp (floor (- offset #x10000) #x80))
+	 (hbyte (logand #x1f (floor off-tmp #x100)))
 	 (lbyte (logand #xff off-tmp)))
     (declare (type unicode-code-point off-tmp)
 	     (type (unsigned-byte 8) hbyte lbyte))
     (setf (ldb (byte 3 5) hbyte) window) ; set window. FIXME: should make hbyte with one step?
     (values hbyte lbyte)))
-;; TODO: add tests for {encode/decode}-extended-window-tag
 
 (defun decode-extended-window-tag (hbyte lbyte)
   (declare (type (unsigned-byte 8) hbyte lbyte))
@@ -173,6 +171,7 @@
 		 (+ (* (logand hbyte #x1f) #x100)
 		    lbyte)))))
 
+;; (FIXME: use other implementation?)
 (defun encode-to-surrogate-pair (code-point)
   (declare (type unicode-code-point code-point))
   (if (<= code-point #xFFFF)
@@ -182,7 +181,6 @@
 	     (low (+ #xDC00 (ldb (byte 10 0) off-code-point))))
 	(declare (type (integer 0 #xFFFFF) off-code-point))
 	(values high low))))
-;; TODO: add tests. (Or use other implementation?)
 
 (defun decode-from-surrogate-pair (high low)
   (declare (type (unsigned-byte 8) high low))
