@@ -9,7 +9,7 @@
 		   :accessor scsu-state-dynamic-window)
    (active-window-index :initform 0 :accessor scsu-state-active-window-index)
    (timestamp-vector :initform (make-array +window-count+ :element-type 'fixnum
-					   :initial-element 0)
+					   :initial-element -1)
 		     :accessor scsu-state-timestamp-vector)
    (current-timestamp :initform 0 :accessor scsu-state-current-timestamp :type fixnum)
    (fix-dynamic-window :initarg :fixed-window :initform *scsu-state-default-fix-dynamic-window*
@@ -350,7 +350,8 @@
   (and (compressible-code-point-p code-point)
        (not (scsu-state-fix-dynamic-window state))
        (same-window-p code-point next-code-point) ; next is in same window
-       (funcall lookahead-func code-point)))
+       #+()				; TODO: consider..
+       (funcall lookahead-func code-point))) 
 
 (defun find-LRU-dynamic-window (state)
   (loop with ret of-type fixnum = 0
@@ -484,17 +485,40 @@
 
 (defconstant +define-window-threshold+ 4)
 
+(defun initialize-timestamp (state initial-priority string start end)
+  (cond
+    ((eq initial-priority :lookahead)
+     (let ((priority-array (make-array '(8) :element-type 'fixnum :initial-element 0)))
+       (declare (type (simple-array fixnum (8)) priority-array)
+		(dynamic-extent priority-array))
+       (loop for i of-type fixnum from start below end
+	  as w = (find-suitable-dynamic-window state (char-code (char string i)))
+	  when w do (incf (aref priority-array w)))
+       (initialize-timestamp state priority-array nil nil nil)))
+    ((eq initial-priority nil)
+       (loop for w of-type fixnum from 0 below +window-count+
+	  do (setf (scsu-state-timestamp state w) (- (random 100)))))
+    ((typep initial-priority 'array)
+     (let ((max (loop for i across initial-priority maximize i)))
+       (loop for w of-type fixnum from 0 below +window-count+
+	  do (setf (scsu-state-timestamp state w)
+		   (- (aref initial-priority w) max)))))
+    (t
+     (error "message is unser construction")))) ; TODO
+
 (defun encode-from-string (string
 			   &key (start1 0) (end1 (length string))
 			     (bytes (make-array (length string) ; no way to expect length..
 						:fill-pointer 0 :adjustable t
 						:element-type '(unsigned-byte 8)))
 			     (start2 0) (end2 (length bytes))
+			     (initial-priority :lookahead)
 			     (state-initargs nil)
 			     (state (apply 'make-instance 'scsu-state state-initargs)))
   (declare (type string string)
 	   (type (array (unsigned-byte 8) *) bytes)	   
 	   (type fixnum start1 end1 start2 end2))
+  (initialize-timestamp state initial-priority string start1 end1)
   (with-buffer-accessor (:writer put-byte :current dst-current)
       (bytes start2 end2 :element-type (unsigned-byte 8))
     (loop for src-current of-type fixnum from start1 below end1
