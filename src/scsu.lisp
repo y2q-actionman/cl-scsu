@@ -329,10 +329,16 @@
 (defun in-active-window-p (state code-point)
   (in-window-p (scsu-state-active-window-offset state) code-point))
 
-(defun same-window-p (code1 code2)
+(defun find-common-window (code1 code2)
   (declare (type unicode-code-point code1 code2))
-  ;; TODO: add support for special windows.
-  (= (logandc2 code1 #x7F) (logandc2 code2 #x7F)))
+  (let ((offset-a (codepoint-to-window-offset code1)))
+    (when (eql offset-a (codepoint-to-window-offset code2))
+      (return-from find-common-window offset-a)))
+  (when (compressible-code-point-p code1)
+    (let ((offset-b (logandc2 code1 #x7F)))
+      (when (= offset-b (logandc2 code2 #x7F))
+	(return-from find-common-window offset-b))))
+  nil)
 
 (defun find-suitable-window* (code-point offset-func)
   (declare (type unicode-code-point code-point)
@@ -358,9 +364,9 @@
 	   (type lookahead-func-type lookahead-func))
   (and (compressible-code-point-p code-point)
        (not (scsu-state-fix-dynamic-window state))
-       (and (same-window-p code-point next-code-point) ; next is in same window
-	    #+()				; TODO: consider..
-	    (funcall lookahead-func code-point))))
+       #+()				; TODO: consider..
+       (funcall lookahead-func code-point)
+       (find-common-window code-point next-code-point))) ; next is in same window
 
 (defun find-LRU-dynamic-window (state)
   (loop with ret of-type fixnum = 0
@@ -372,26 +378,26 @@
 	      min ts)
      finally (return ret)))
 
-(defun encode-define-window (state code-point write-func define-window-tag define-extended-tag)
-  (declare (type unicode-code-point code-point)
+(defun encode-define-window (state offset write-func define-window-tag define-extended-tag)
+  (declare (type unicode-code-point offset)
  	   (type write-func-type write-func)
 	   (type (unsigned-byte 8) define-window-tag define-extended-tag))
-  (let ((new-window (find-LRU-dynamic-window state))
-	(offset (logandc2 code-point #x7f)))
-    (declare (type window-index new-window)
-	     (type unicode-code-point offset))
-    (scsu-define-window state new-window offset)
-    (cond ((<= code-point #xFFFF) ; 'SDn' case
-	   (let ((index (find-window-offset-table-index offset)))
-	     (declare (type (unsigned-byte 8) index))
+  (let ((new-window (find-LRU-dynamic-window state)))
+    (declare (type window-index new-window))
+    (multiple-value-bind (_ table-index)
+	(codepoint-to-window-offset offset)
+      (declare (ignore _)
+	       (type (or null (unsigned-byte 8)) table-index))
+      (scsu-define-window state new-window offset)
+      (cond ((<= offset #xFFFF)		; 'SDn' case
 	     (funcall write-func (+ define-window-tag new-window))
-	     (funcall write-func index)))
-	  (t			; 'SDX' case
-	   (multiple-value-bind (hbyte lbyte)
-	       (encode-extended-window-tag new-window offset)
-	     (funcall write-func define-extended-tag)
-	     (funcall write-func hbyte)
-	     (funcall write-func lbyte))))))
+	     (funcall write-func table-index))
+	    (t				; 'SDX' case
+	     (multiple-value-bind (hbyte lbyte)
+		 (encode-extended-window-tag new-window offset)
+	       (funcall write-func define-extended-tag)
+	       (funcall write-func hbyte)
+	       (funcall write-func lbyte)))))))
 
 (defun encode-SMP-as-surrogate-pair (state code-point next-code-point write-func lookahead-func)
   (declare (type unicode-code-point code-point next-code-point))
@@ -456,7 +462,8 @@
 	 (funcall write-func (ldb (byte 8 0) code-point)))
 	((use-define-window-p state code-point next-code-point lookahead-func)
 	 ;; define window
-	 (encode-define-window state code-point write-func +SD0+ +SDX+)
+	 (encode-define-window state (find-common-window code-point next-code-point) ; TODO: use use-define-window-p return value
+			       write-func +SD0+ +SDX+)
 	 (encode-unit* state code-point next-code-point write-func lookahead-func))
 	((> code-point #xFFFF)		; use surrogate pair
 	 (encode-SMP-as-surrogate-pair state code-point next-code-point write-func lookahead-func))
@@ -482,7 +489,8 @@
 	       (encode-unit* state code-point next-code-point write-func lookahead-func)))))
 	((use-define-window-p state code-point next-code-point lookahead-func) ; define window
 	 (setf (scsu-state-mode state) :single-byte-mode)
-	 (encode-define-window state code-point write-func +UD0+ +UDX+)
+	 (encode-define-window state (find-common-window code-point next-code-point) ; TODO: use use-define-window-p return value
+			       write-func +UD0+ +UDX+)
 	 (encode-unit* state code-point next-code-point write-func lookahead-func))
 	((> code-point #xFFFF)		; use surrogate pair
 	 (encode-SMP-as-surrogate-pair state code-point next-code-point write-func lookahead-func))
@@ -512,7 +520,7 @@
        (loop for i of-type fixnum from start below end
 	  as w = (find-suitable-dynamic-window state (char-code (char string i)))
 	  when w do (incf (aref priority-array w)))
-       (initialize-timestamp state priority-array nil nil nil)))
+       (initialize-timestamp state priority-array nil 0 0)))
     ((eq initial-priority nil)
        (loop for w of-type fixnum from 0 below +window-count+
 	  do (setf (scsu-state-timestamp state w) (- (random 100)))))
@@ -546,7 +554,7 @@
        do (flet ((lookahead-function (code-point)
 		   (declare (type unicode-code-point code-point))
 		   (loop for j of-type fixnum from src-current below end1
-		      if (same-window-p code-point (char-code (char string j)))
+		      if (find-common-window code-point (char-code (char string j)))
 		      count it into same-window-chars
 		      and if (>= same-window-chars +define-window-threshold+)
 		      return t

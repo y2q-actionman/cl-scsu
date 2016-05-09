@@ -1,7 +1,5 @@
 (in-package :cl-scsu)
 
-(defconstant +window-count+ 8 "number of static or dynamic windows")
-
 ;;; Types
 (deftype window-index ()
   `(integer 0 7))
@@ -10,6 +8,9 @@
   `(integer 0 #x10FFFF))
 
 ;;; Tags
+(defconstant +window-count+ 8 "number of static or dynamic windows")
+(declaim (type window-index +window-count+))
+
 (defmacro define-window-find-function (name lower)
   `(defun ,name (byte)
      (declare (type (unsigned-byte 8) byte))
@@ -92,24 +93,32 @@
 	     (#xFE #x30A0) ; Katakana
 	     (#xFF #xFF60)))))		; Halfwidth Katakana
 
-(defun find-window-offset-table-index (offset) ; TODO: FIXME: some offsets are not #x80 aligned!!!!
-  (declare (type unicode-code-point offset))
-  (case offset
-    (#x00C0 #xF9)	  ; Latin-1 letters + half of Latin Extended-A
-    (#x0250 #xFA)	  ; IPA Extensions
-    (#x0370 #xFB)	  ; Greek
-    (#x0530 #xFC)	  ; Armenian
-    (#x3040 #xFD)	  ; Hiragana
-    (#x30A0 #xFE)	  ; Katakana
-    (#xFF60 #xFF)	  ; Halfwidth Katakana
-    (otherwise
-     (cond
-       ((<= #x0080 offset #x3380)  ; half-blocks from U+0080 to U+3380
-	(floor offset #x80))
-       ((<= #xE000 offset #xFF80)  ; half-blocks from U+E000 to U+FF80
-	(floor (- offset #xAC00) #x80))
-       (t
-	(error "incompressible code-point"))))))
+(defun codepoint-to-window-offset (code-point)
+  (declare (type unicode-code-point code-point))
+  (cond
+    ((<= #x00C0 code-point (+ #x00C0 #x7F)) ; Latin-1 letters + half of Latin Extended-A
+     (values #x00C0 #xF9))
+    ((<= #x0250 code-point (+ #x0250 #x7F)) ; IPA Extensions
+     (values #x0250 #xFA))
+    ((<= #x0370 code-point (+ #x0370 #x7F)) ; Greek
+     (values #x0370 #xFB))
+    ((<= #x0530 code-point (+ #x0530 #x7F)) ; Armenian
+     (values #x0530 #xFC))
+    ((<= #x3040 code-point (+ #x3040 #x7F)) ; Hiragana
+     (values #x3040 #xFD))
+    ((<= #x30A0 code-point (+ #x30A0 #x7F)) ; Katakana
+     (values #x30A0 #xFE))
+    ((<= #xFF60 code-point (+ #xFF60 #x7F)) ; Halfwidth Katakana
+     (values #xFF60 #xFF))
+    ((<= #x0080 code-point (+ #x3380 #x7F)) ; half-blocks from U+0080 to U+3380
+     (values (logandc2 code-point #x7F)
+	     (floor code-point #x80)))
+    ((<= #xE000 code-point (+ #xFF80 #x7F)) ; half-blocks from U+E000 to U+FF80
+     (values (logandc2 code-point #x7F)
+	     (floor (- code-point #xAC00) #x80)))
+    (t
+     nil)))
+
 
 (alexandria:define-constant +static-windows+
     #(#x0000	      ; (for quoting of tags used in single-byte mode)
