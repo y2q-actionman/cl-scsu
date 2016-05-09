@@ -465,8 +465,6 @@
 	 (encode-define-window state (find-common-window code-point next-code-point) ; TODO: use use-define-window-p return value
 			       write-func +SD0+ +SDX+)
 	 (encode-unit* state code-point next-code-point write-func lookahead-func))
-	((> code-point #xFFFF)		; use surrogate pair
-	 (encode-SMP-as-surrogate-pair state code-point next-code-point write-func lookahead-func))
 	(t
 	 ;; goto unicode-mode.
 	 (funcall write-func +SCU+)
