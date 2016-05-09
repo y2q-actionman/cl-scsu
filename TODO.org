@@ -50,6 +50,9 @@
   :lookahead か配列。もう計算しちゃおう。
 
 
+- [ ] rearrange test
+  util, codepoints, examples, interface 
+
 * TODO 圧縮率
 
 Sdnを使う方が小さい
@@ -74,6 +77,13 @@ Window更新優先度
 ・なし
 ・言語ごと定義
 ・lookahead
+
+
+短い encoding から試さないとだめ
+- 2byte define window
+- 3byte define window
+- quote unicode BMP char
+- unicode mode
 
 
 * ボツネタ
