@@ -49,6 +49,16 @@
   (declare (type window-index window))
   (setf (aref (scsu-state-timestamp-vector state) window) val))
 
+(defmethod scsu-state-update-timestamp (state window)
+  (declare (type window-index window))
+  (let ((timestamp (incf (scsu-state-current-timestamp state))))
+    (declare (type fixnum timestamp))
+    (setf (scsu-state-timestamp state window) timestamp)))
+
+(defmethod scsu-state-has-empty-window-p (state)
+  (loop for w of-type fixnum from 0 below +window-count+
+     thereis (minusp (aref (scsu-state-timestamp-vector state) w))))
+
 (defmethod scsu-state-reset ((state scsu-state))
   (slot-makunbound state 'mode)
   (slot-makunbound state 'dynamic-window)
@@ -145,9 +155,7 @@
 
 (defun scsu-change-to-window (state window)
   (declare (type window-index window))
-  ;; update LRU entry
-  (let ((timestamp (incf (scsu-state-current-timestamp state))))
-    (setf (scsu-state-timestamp state window) timestamp))
+  (scsu-state-update-timestamp state window)
   (setf (scsu-state-active-window-index state) window))
 
 (defun scsu-define-window (state window offset)
@@ -174,11 +182,11 @@
 	     ((#x0 #x9 #xA #xD)		; pass
 	      byte)
 	     ((#.+SQ0+ #.+SQ1+ #.+SQ2+ #.+SQ3+ #.+SQ4+ #.+SQ5+ #.+SQ6+ #.+SQ7+) ; Quote from Window
-	      ;; TODO: update LRU timestamp
 	      (let ((window (find-SQn-window byte))
 		    (next-byte (funcall read-func)))
 		(declare (type window-index window)
 			 (type (unsigned-byte 8) next-byte))
+		(scsu-state-update-timestamp state window)
 		(cond ((<= #x0 next-byte #x7f)
 		       (+ (lookup-static-window window) next-byte))
 		      (t
@@ -323,6 +331,7 @@
 
 (defun same-window-p (code1 code2)
   (declare (type unicode-code-point code1 code2))
+  ;; TODO: add support for special windows.
   (= (logandc2 code1 #x7F) (logandc2 code2 #x7F)))
 
 (defun find-suitable-window* (code-point offset-func)
@@ -349,9 +358,9 @@
 	   (type lookahead-func-type lookahead-func))
   (and (compressible-code-point-p code-point)
        (not (scsu-state-fix-dynamic-window state))
-       (same-window-p code-point next-code-point) ; next is in same window
-       #+()				; TODO: consider..
-       (funcall lookahead-func code-point))) 
+       (and (same-window-p code-point next-code-point) ; next is in same window
+	    #+()				; TODO: consider..
+	    (funcall lookahead-func code-point))))
 
 (defun find-LRU-dynamic-window (state)
   (loop with ret of-type fixnum = 0
@@ -418,11 +427,18 @@
 	((let ((dwindow (find-suitable-dynamic-window state code-point))) ; in other dynamic window
 	   (when dwindow
 	     (locally (declare (type window-index dwindow))
-	       (scsu-change-to-window state dwindow)
 	       (let ((offset (lookup-dynamic-window state dwindow)))
 		 (declare (type unicode-code-point offset))
-		 (funcall write-func (+ +SC0+ dwindow))
-		 (funcall write-func (+ (- code-point offset) #x80)))))))
+		 (cond ((or (null next-code-point) ; quote
+			    #+() ; TODO: use this after fix same-window-p
+			    (not (same-window-p code-point next-code-point)))
+			(scsu-state-update-timestamp state dwindow)
+			(funcall write-func (+ +SQ0+ dwindow))
+			(funcall write-func (+ (- code-point offset) #x80)))
+		       (t		; change
+			(scsu-change-to-window state dwindow)
+			(funcall write-func (+ +SC0+ dwindow))
+			(encode-unit* state code-point next-code-point write-func lookahead-func))))))))
 	;; Not in current window. We must quote it, define a new window, or use unicode-mode.
 	;; TODO: add test code for this part.
 	((or (standalone-character-p code-point)
@@ -430,7 +446,9 @@
 	     (null next-code-point)
 	     (<= (the unicode-code-point next-code-point) #x7F)
 	     (in-active-window-p state next-code-point)
+	     #+()			; TODO
 	     (find-suitable-static-window next-code-point)
+	     #+()			; TODO
 	     (find-suitable-dynamic-window state next-code-point))
 	 ;; quote unicode.
 	 (funcall write-func +SQU+)

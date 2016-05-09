@@ -92,7 +92,7 @@
 	     (#xFE #x30A0) ; Katakana
 	     (#xFF #xFF60)))))		; Halfwidth Katakana
 
-(defun find-window-offset-table-index (offset)
+(defun find-window-offset-table-index (offset) ; TODO: FIXME: some offsets are not #x80 aligned!!!!
   (declare (type unicode-code-point offset))
   (case offset
     (#x00C0 #xF9)	  ; Latin-1 letters + half of Latin Extended-A
