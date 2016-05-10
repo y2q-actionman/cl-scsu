@@ -21,6 +21,8 @@
   => encode/decode string だけにした。 babel がそうだから。
   しかし、テストを書くには、 Unicode 配列がそこそこ便利そう。
 
+  => encode/decode UTF-32 が必要。 define extended を活用するため。
+
 - [ ] character と code-point を双方食えるように？
 
 
