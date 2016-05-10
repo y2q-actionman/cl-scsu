@@ -25,7 +25,7 @@
 	   (compressed-len (length compressed))
 	   (expected-compression-len (length expected-compression)))
       #+()
-      (format t "~&Codepoints: ~A~%String: ~A~%Expected Compression (~D) ~A~%Our Compression: (~D) ~A
+      (format t "~&Codepoints: ~A~%String: ~A~%Expected Compression: (~D)~%~A~%Our Compression: (~D)~%~A
 Our Decompression: ~A~%Decompression from Expected: ~A~2%"
 	      codepoints string
 	      expected-compression-len expected-compression

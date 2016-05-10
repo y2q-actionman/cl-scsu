@@ -2,6 +2,7 @@
 
 ;;; State
 (defparameter *scsu-state-default-fix-dynamic-window* nil)
+(defparameter *scsu-state-default-trace* nil)
 
 (defclass scsu-state ()
   ((mode :initform :single-byte-mode :accessor scsu-state-mode)
@@ -13,8 +14,9 @@
 		     :accessor scsu-state-timestamp-vector)
    (current-timestamp :initform 0 :accessor scsu-state-current-timestamp :type fixnum)
    (fix-dynamic-window :initarg :fixed-window :initform *scsu-state-default-fix-dynamic-window*
-		       :accessor scsu-state-fix-dynamic-window
-		       :type boolean)))
+		       :reader scsu-state-fix-dynamic-window :type boolean)
+   (trace :initarg :trace :initform *scsu-state-default-trace*
+	  :reader scsu-state-trace :type boolean)))
 
 (defmethod lookup-dynamic-window (state window)
   (declare (type window-index window))
@@ -180,12 +182,18 @@
     (cond ((<= 0 byte #x1F)		; Tag bytes.
 	   (ecase byte
 	     ((#x0 #x9 #xA #xD)		; pass
+	      (when (scsu-state-trace state)
+		(format *debug-io* "[single-byte ASCII ~X]" byte))
 	      byte)
 	     ((#.+SQ0+ #.+SQ1+ #.+SQ2+ #.+SQ3+ #.+SQ4+ #.+SQ5+ #.+SQ6+ #.+SQ7+) ; Quote from Window
+	      (when (scsu-state-trace state)
+		(format *debug-io* "SQ~D " (find-SQn-window byte)))
 	      (let ((window (find-SQn-window byte))
 		    (next-byte (funcall read-func)))
 		(declare (type window-index window)
 			 (type (unsigned-byte 8) next-byte))
+		(when (scsu-state-trace state)
+		  (format *debug-io* "[single quote ~X]" next-byte))
 		(scsu-state-update-timestamp state window)
 		(cond ((<= #x0 next-byte #x7f)
 		       (+ (lookup-static-window window) next-byte))
@@ -193,6 +201,8 @@
 		       (+ (lookup-dynamic-window state window)
 			  (logand next-byte #x7f))))))
 	     (#.+SDX+			; Define Extended
+	      (when (scsu-state-trace state)
+		(format *debug-io* "SDX "))
 	      (decode-define-window-extended state read-func)
 	      (decode-unit* state read-func))
 	     (#xC
@@ -200,25 +210,40 @@
 		     :format-control "reserved byte ~A is used"
 		     :format-arguments (list byte)))
 	     (#.+SQU+			; Quote Unicode
-	      (decode-quote-unicode read-func))
+	      (when (scsu-state-trace state)
+		(format *debug-io* "SQU "))
+	      (let ((char (decode-quote-unicode read-func)))
+		(prog1 char
+		  (when (scsu-state-trace state)
+		    (format *debug-io* "[quote unicode ~X]" char)))))
 	     (#.+SCU+			; Change to Unicode
+	      (when (scsu-state-trace state)
+		(format *debug-io* "SCU "))
 	      (setf (scsu-state-mode state) :unicode-mode)
 	      (decode-unit* state read-func))
 	     ((#.+SC0+ #.+SC1+ #.+SC2+ #.+SC3+ #.+SC4+ #.+SC5+ #.+SC6+ #.+SC7+) ; Change to Window
+	      (when (scsu-state-trace state)
+		(format *debug-io* "SC~D " (find-SCn-window byte)))
 	      (scsu-change-to-window state (find-SCn-window byte))
 	      (decode-unit* state read-func))
 	     ((#.+SD0+ #.+SD1+ #.+SD2+ #.+SD3+ #.+SD4+ #.+SD5+ #.+SD6+ #.+SD7+) ; Define Window
+	      (when (scsu-state-trace state)
+		(format *debug-io* "SD~D " (find-SDn-window byte)))
 	      (scsu-define-window state
 				  (find-SDn-window byte)
 				  (lookup-window-offset-table (funcall read-func)))
 	      (decode-unit* state read-func))))
 	  ((<= byte #x7F)		  ; Basic Latin Block.
+	   (when (scsu-state-trace state)
+	     (format *debug-io* "[single-byte ASCII ~X]" byte))
 	   byte)
 	  (t				; In active dynamic window.
 	   (let ((offset (scsu-state-active-window-offset state))
 		 (position (logand byte #x7F))) ; (- byte #x80)
 	     (declare (type unicode-code-point offset)
 		      (type (unsigned-byte 8) position))
+	     (when (scsu-state-trace state)
+	       (format *debug-io* "[single-byte dynamic window ~X]" byte))
 	     (+ offset position))))))
 
 (defun decode-unit*/unicode-mode (state read-func)
@@ -227,18 +252,29 @@
     (declare (type (unsigned-byte 8) byte))
     (case byte
       ((#.+UC0+ #.+UC1+ #.+UC2+ #.+UC3+ #.+UC4+ #.+UC5+ #.+UC6+ #.+UC7+) ; Change to Window
+       (when (scsu-state-trace state)
+	 (format *debug-io* "UC~D " (find-UCn-window byte)))
        (scsu-change-to-window state (find-UCn-window byte))
        (setf (scsu-state-mode state) :single-byte-mode)
        (decode-unit* state read-func))
       ((#.+UD0+ #.+UD1+ #.+UD2+ #.+UD3+ #.+UD4+ #.+UD5+ #.+UD6+ #.+UD7+) ; Define Window
+       (when (scsu-state-trace state)
+	 (format *debug-io* "UD~D " (find-UDn-window byte)))
        (scsu-define-window state
 			   (find-UDn-window byte)
 			   (lookup-window-offset-table (funcall read-func)))
        (setf (scsu-state-mode state) :single-byte-mode)
        (decode-unit* state read-func))
-      (#.+UQU+			; Quote Unicode
-       (decode-quote-unicode read-func))
-      (#.+UDX+			; Define Extended
+      (#.+UQU+				; Quote Unicode
+       (when (scsu-state-trace state)
+	 (format *debug-io* "UQU "))
+       (let ((char (decode-quote-unicode read-func)))
+	 (prog1 char
+	   (when (scsu-state-trace state)
+	     (format *debug-io* "[quote unicode ~X]" char)))))
+      (#.+UDX+				; Define Extended
+       (when (scsu-state-trace state)
+	 (format *debug-io* "UDX "))
        (decode-define-window-extended state read-func)
        (setf (scsu-state-mode state) :single-byte-mode)
        (decode-unit* state read-func))
@@ -248,12 +284,23 @@
 	      :format-arguments (list byte)))
       (otherwise			; MSB of Unicode BMP char.
        ;; (assert (or (<= #x00 byte #xDF) (<= #xF3 byte #xFF)))
-       (logior (ash byte 8) (funcall read-func))))))
+       (let ((next (funcall read-func)))
+	 (declare (type (unsigned-byte 8) next))
+	 (when (scsu-state-trace state)
+	   (format *debug-io* "[Unicode char ~X,~X]" byte next))
+	 (logior (ash byte 8) next))))))
 
 (defun decode-unit* (state read-func)
   (ecase (scsu-state-mode state)
     (:single-byte-mode (decode-unit*/single-byte-mode state read-func))
     (:unicode-mode (decode-unit*/unicode-mode state read-func))))
+
+(defun decode-unit (state read-func)	; TODO: use defmethod :around
+  (when (scsu-state-trace state)
+    (fresh-line *debug-io*))
+  (prog1 (decode-unit* state read-func)
+    (when (scsu-state-trace state)
+      (terpri *debug-io*))))
 
 (defun decode-to-string (bytes
 			 &key (start1 0) (end1 (length bytes))
@@ -265,6 +312,8 @@
   (declare (type (array (unsigned-byte 8) *) bytes)
 	   (type fixnum start1 end1 start2 end2)
 	   (type string string))
+  (when (scsu-state-trace state)
+    (format *debug-io* "~2&"))
   (with-buffer-accessor (:reader pick-byte :current src-current)
       (bytes start1 end1 :element-type (unsigned-byte 8))
     (with-buffer-accessor (:writer put-char :current dst-current)
@@ -275,11 +324,11 @@
 		       :return (lambda (dst src)
 				 (return-from decode-to-string
 				   (values string dst src state))))
-	      (let ((code-point (decode-unit* state #'pick-byte)))
+	      (let ((code-point (decode-unit state #'pick-byte)))
 		(declare (type unicode-code-point code-point))
 		;; TODO: cleanup this part
 		(cond ((<= #xD800 code-point #xDBFF) ; high surrogate
-		       (let ((low (decode-unit* state #'pick-byte)))
+		       (let ((low (decode-unit state #'pick-byte)))
 			 (declare (type (unsigned-byte 16) low))
 			 (unless (<= #xDC00 low #xDFFF)
 			   (error 'scsu-error
@@ -410,6 +459,13 @@
     (encode-unit* state high low write-func lookahead-func)
     (encode-unit* state low next-code-point write-func lookahead-func)))
 
+(defun encoded-1byte-p (state code-point &optional (window (scsu-state-active-window-index state)))
+  (declare (type (or null unicode-code-point) code-point)
+	   (type window-index window))
+  (or (null code-point)
+      (<= code-point #x7F)
+      (in-window-p (lookup-dynamic-window state window) code-point)))
+
 (defun encode-unit*/single-byte-mode (state code-point next-code-point write-func lookahead-func)
   (declare (type unicode-code-point code-point)
 	   (type (or null unicode-code-point) next-code-point)
@@ -440,6 +496,7 @@
 	       (let ((offset (lookup-dynamic-window state dwindow)))
 		 (declare (type unicode-code-point offset))
 		 (cond ((or (null next-code-point) ; quote
+			    ;; (encoded-1byte-p state next-code-point)
 			    #+() ; TODO: use this if 1byte
 			    (not (find-common-window code-point next-code-point)))
 			(scsu-state-update-timestamp state dwindow)
@@ -459,9 +516,7 @@
 	 (encode-unit* state code-point next-code-point write-func lookahead-func))
 	((or (standalone-character-p code-point)
 	     ;; not both suitable for unicode-mode => next char can be encoded smally (1byte).
-	     (null next-code-point)
-	     (<= (the unicode-code-point next-code-point) #x7F)
-	     (in-active-window-p state next-code-point)
+	     (encoded-1byte-p state next-code-point)
 	     #+()			; TODO
 	     (find-suitable-static-window next-code-point)
 	     #+()			; TODO
@@ -483,8 +538,10 @@
 	 (setf (scsu-state-mode state) :single-byte-mode)
 	 (funcall write-func (+ +UC0+ (scsu-state-active-window-index state)))
 	 (encode-unit* state code-point next-code-point write-func lookahead-func))
-	((let ((dwindow (find-suitable-dynamic-window state code-point))) ; in dynamic window
-	   (when dwindow
+	((let ((dwindow	(find-suitable-dynamic-window state code-point))) ; in dynamic window
+	   (when (and dwindow
+		      #+()
+		      (encoded-1byte-p state next-code-point dwindow))
 	     (locally (declare (type window-index dwindow))
 	       (setf (scsu-state-mode state) :single-byte-mode)
 	       (scsu-change-to-window state dwindow)
@@ -492,7 +549,8 @@
 	       (encode-unit* state code-point next-code-point write-func lookahead-func)))))
 	((use-define-window-p state code-point next-code-point lookahead-func) ; define window
 	 (setf (scsu-state-mode state) :single-byte-mode)
-	 (encode-define-window state (find-common-window code-point next-code-point) ; TODO: use use-define-window-p return value
+	 (encode-define-window state (or (find-common-window code-point next-code-point)
+					 (codepoint-to-window-offset code-point))
 			       write-func +UD0+ +UDX+)
 	 (encode-unit* state code-point next-code-point write-func lookahead-func))
 	((> code-point #xFFFF)		; use surrogate pair
