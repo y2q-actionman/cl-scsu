@@ -454,14 +454,6 @@
 	       (funcall write-func hbyte)
 	       (funcall write-func lbyte)))))))
 
-(defun encode-SMP-as-surrogate-pair (state code-point next-code-point write-func)
-  (declare (type unicode-code-point code-point next-code-point))
-  (multiple-value-bind (high low)
-      (encode-to-surrogate-pair code-point)
-    (declare (type (unsigned-byte 16) high low))
-    (encode-unit* state high low write-func)
-    (encode-unit* state low next-code-point write-func)))
-
 (defun encoded-1byte-p (state code-point &optional (window (scsu-state-active-window-index state)))
   (declare (type (or null unicode-code-point) code-point)
 	   (type window-index window))
@@ -469,6 +461,11 @@
       (<= code-point #x7F)
       (in-window-p (lookup-dynamic-window state window) code-point)))
 
+(defun write-16bit-code-point (code-point write-func)
+  (declare (type (unsigned-byte 16) code-point))
+  (funcall write-func (ldb (byte 8 8) code-point))
+  (funcall write-func (ldb (byte 8 0) code-point)))
+    
 (defun encode-unit*/single-byte-mode (state code-point next-code-point write-func)
   (declare (type unicode-code-point code-point)
 	   (type (or null unicode-code-point) next-code-point)
@@ -529,8 +526,14 @@
 	      (find-suitable-dynamic-window state next-code-point))
 	  ;; quote unicode.
 	  (funcall write-func +SQU+)
-	  (funcall write-func (ldb (byte 8 8) code-point))
-	  (funcall write-func (ldb (byte 8 0) code-point)))
+	  (if (> code-point #xFFFF)
+	      (multiple-value-bind (high low)
+		  (encode-to-surrogate-pair code-point)
+		;; I don't use unicode-mode combination.
+		(write-16bit-code-point high write-func)
+		(funcall write-func +SQU+)
+		(write-16bit-code-point low write-func))
+	      (write-16bit-code-point code-point write-func)))
 	 (t
 	  ;; goto unicode-mode.
 	  (funcall write-func +SCU+)
@@ -559,12 +562,14 @@
 			       write-func +UD0+ +UDX+)
 	 (encode-unit* state code-point next-code-point write-func))
 	((> code-point #xFFFF)		; use surrogate pair
-	 (encode-SMP-as-surrogate-pair state code-point next-code-point write-func))
+	 (multiple-value-bind (high low)
+	     (encode-to-surrogate-pair code-point)
+	   (write-16bit-code-point high write-func)
+	   (write-16bit-code-point low write-func)))
 	(t
 	 (when (<= #xE000 code-point #xF2FF)
 	   (funcall write-func +UQU+))
-	 (funcall write-func (ldb (byte 8 8) code-point))
-	 (funcall write-func (ldb (byte 8 0) code-point)))))
+	 (write-16bit-code-point code-point write-func))))
 
 (defun encode-unit* (state code-point next-code-point write-func)
   (declare (type unicode-code-point code-point next-code-point)
