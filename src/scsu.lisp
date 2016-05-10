@@ -373,9 +373,6 @@
 (deftype write-func-type ()
   '(function ((unsigned-byte 8)) t))
 
-(deftype lookahead-func-type ()
-  '(function (fixnum) t))
-
 (defun in-window-p (offset code-point)
   (declare (type unicode-code-point offset code-point))
   (<= offset code-point (+ offset #x7f)))
@@ -414,9 +411,8 @@
 			   (declare (type window-index i))
 			   (lookup-dynamic-window state i))))
 
-(defun use-define-window-p (state code-point &optional next-code-point lookahead-func)
-  (declare (type unicode-code-point code-point next-code-point)
-	   (type lookahead-func-type lookahead-func))
+(defun use-define-window-p (state code-point &optional next-code-point)
+  (declare (type unicode-code-point code-point next-code-point))
   (and (not (scsu-state-fix-dynamic-window state))
        (not (standalone-character-p code-point))
        (let ((offset (codepoint-to-window-offset code-point)))
@@ -458,13 +454,13 @@
 	       (funcall write-func hbyte)
 	       (funcall write-func lbyte)))))))
 
-(defun encode-SMP-as-surrogate-pair (state code-point next-code-point write-func lookahead-func)
+(defun encode-SMP-as-surrogate-pair (state code-point next-code-point write-func)
   (declare (type unicode-code-point code-point next-code-point))
   (multiple-value-bind (high low)
       (encode-to-surrogate-pair code-point)
     (declare (type (unsigned-byte 16) high low))
-    (encode-unit* state high low write-func lookahead-func)
-    (encode-unit* state low next-code-point write-func lookahead-func)))
+    (encode-unit* state high low write-func)
+    (encode-unit* state low next-code-point write-func)))
 
 (defun encoded-1byte-p (state code-point &optional (window (scsu-state-active-window-index state)))
   (declare (type (or null unicode-code-point) code-point)
@@ -473,11 +469,10 @@
       (<= code-point #x7F)
       (in-window-p (lookup-dynamic-window state window) code-point)))
 
-(defun encode-unit*/single-byte-mode (state code-point next-code-point write-func lookahead-func)
+(defun encode-unit*/single-byte-mode (state code-point next-code-point write-func)
   (declare (type unicode-code-point code-point)
 	   (type (or null unicode-code-point) next-code-point)
-	   (type write-func-type write-func)
-	   (type lookahead-func-type lookahead-func))
+	   (type write-func-type write-func))
   (cond
     ;; 1byte
     ((< code-point #x20)		
@@ -521,7 +516,7 @@
 		    (t			; change
 		     (scsu-change-to-window state dwindow)
 		     (funcall write-func (+ +SC0+ dwindow))
-		     (encode-unit* state code-point next-code-point write-func lookahead-func))))))
+		     (encode-unit* state code-point next-code-point write-func))))))
 	 ;; 3byte or more
 	 ;; TODO: add test code for this part.
 	 ((use-define-window-p state code-point) ; define window
@@ -529,7 +524,7 @@
 				(or (find-common-window code-point next-code-point)
 				    (codepoint-to-window-offset code-point))
 				write-func +SD0+ +SDX+)
-	  (encode-unit* state code-point next-code-point write-func lookahead-func))
+	  (encode-unit* state code-point next-code-point write-func))
 	 ((or (standalone-character-p code-point)
 	      ;; not both suitable for unicode-mode => next char can be encoded smally (1byte).
 	      (encoded-1byte-p state next-code-point)
@@ -544,15 +539,15 @@
 	  ;; goto unicode-mode.
 	  (funcall write-func +SCU+)
 	  (setf (scsu-state-mode state) :unicode-mode)
-	  (encode-unit* state code-point next-code-point write-func lookahead-func)))))))
+	  (encode-unit* state code-point next-code-point write-func)))))))
 
-(defun encode-unit*/unicode-mode (state code-point next-code-point write-func lookahead-func)
+(defun encode-unit*/unicode-mode (state code-point next-code-point write-func)
   (declare (type unicode-code-point code-point next-code-point)
 	   (type write-func-type write-func))
   (cond ((<= code-point #x7F)		; Basic Latin
 	 (setf (scsu-state-mode state) :single-byte-mode)
 	 (funcall write-func (+ +UC0+ (scsu-state-active-window-index state)))
-	 (encode-unit* state code-point next-code-point write-func lookahead-func))
+	 (encode-unit* state code-point next-code-point write-func))
 	((let ((dwindow	(find-suitable-dynamic-window state code-point))) ; in dynamic window
 	   (when (and dwindow
 		      (encoded-1byte-p state next-code-point dwindow))
@@ -560,31 +555,29 @@
 	       (setf (scsu-state-mode state) :single-byte-mode)
 	       (scsu-change-to-window state dwindow)
 	       (funcall write-func (+ +UC0+ dwindow))
-	       (encode-unit* state code-point next-code-point write-func lookahead-func)))))
+	       (encode-unit* state code-point next-code-point write-func)))))
 	((use-define-window-p state code-point next-code-point) ; define window
 	 (setf (scsu-state-mode state) :single-byte-mode)
 	 (encode-define-window state (or (find-common-window code-point next-code-point)
 					 (codepoint-to-window-offset code-point))
 			       write-func +UD0+ +UDX+)
-	 (encode-unit* state code-point next-code-point write-func lookahead-func))
+	 (encode-unit* state code-point next-code-point write-func))
 	((> code-point #xFFFF)		; use surrogate pair
-	 (encode-SMP-as-surrogate-pair state code-point next-code-point write-func lookahead-func))
+	 (encode-SMP-as-surrogate-pair state code-point next-code-point write-func))
 	(t
 	 (when (<= #xE000 code-point #xF2FF)
 	   (funcall write-func +UQU+))
 	 (funcall write-func (ldb (byte 8 8) code-point))
 	 (funcall write-func (ldb (byte 8 0) code-point)))))
 
-(defun encode-unit* (state code-point next-code-point write-func lookahead-func)
+(defun encode-unit* (state code-point next-code-point write-func)
   (declare (type unicode-code-point code-point next-code-point)
 	   (type write-func-type write-func))
   (ecase (scsu-state-mode state)
     (:single-byte-mode
-     (encode-unit*/single-byte-mode state code-point next-code-point write-func lookahead-func))
+     (encode-unit*/single-byte-mode state code-point next-code-point write-func))
     (:unicode-mode
-     (encode-unit*/unicode-mode state code-point next-code-point write-func lookahead-func))))
-
-(defconstant +define-window-threshold+ 4)
+     (encode-unit*/unicode-mode state code-point next-code-point write-func))))
 
 (defun initialize-timestamp (state initial-priority string start end)
   (cond
@@ -596,7 +589,7 @@
 	  as w = (find-suitable-dynamic-window state (char-code (char string i)))
 	  when w do (incf (aref priority-array w)))
        (initialize-timestamp state priority-array nil 0 0)))
-    ((eq initial-priority nil)
+    ((eq initial-priority :random)
        (loop for w of-type fixnum from 0 below +window-count+
 	  do (setf (scsu-state-timestamp state w) (- (random 100)))))
     ((typep initial-priority 'array)
@@ -626,20 +619,12 @@
        for next of-type fixnum from (1+ start1)
        as code-point = (char-code (char string  src-current)) then next-code-point
        as next-code-point = (if (>= next end1) nil (char-code (char string next)))
-       do (flet ((lookahead-function (code-point)
-		   (declare (type unicode-code-point code-point))
-		   (loop for j of-type fixnum from src-current below end1
-		      if (find-common-window code-point (char-code (char string j)))
-		      count it into same-window-chars
-		      and if (>= same-window-chars +define-window-threshold+)
-		      return t
-		      finally (return nil))))
-	    (with-scsu-error-handling
+       do (with-scsu-error-handling
 	      (state :src src-current :dst dst-current
 		     :return (lambda (dst src)
 			       (return-from encode-from-string
 				 (values bytes dst src state))))
-	      (encode-unit* state code-point next-code-point #'put-byte #'lookahead-function))))
+	    (encode-unit* state code-point next-code-point #'put-byte)))
     (values bytes dst-current end1 state)))
 
 ;; The required length is out of BMP case.
