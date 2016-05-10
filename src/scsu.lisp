@@ -505,11 +505,7 @@
 	  (locally (declare (type window-index dwindow))
 	    (let ((offset (lookup-dynamic-window state dwindow)))
 	      (declare (type unicode-code-point offset))
-	      (cond ((or (null next-code-point) ; quote
-			 ;; (<= next-code-point #x7f)
-			 ;; (encoded-1byte-p state next-code-point)
-			 #+()		; TODO: use this if 1byte
-			 (not (find-common-window code-point next-code-point)))
+	      (cond ((encoded-1byte-p state next-code-point) ; quote
 		     (scsu-state-update-timestamp state dwindow)
 		     (funcall write-func (+ +SQ0+ dwindow))
 		     (funcall write-func (+ (- code-point offset) #x80)))
