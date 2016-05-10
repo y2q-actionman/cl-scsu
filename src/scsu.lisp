@@ -331,13 +331,14 @@
 
 (defun find-common-window (code1 code2)
   (declare (type unicode-code-point code1 code2))
-  (let ((offset-a (codepoint-to-window-offset code1)))
-    (when (eql offset-a (codepoint-to-window-offset code2))
-      (return-from find-common-window offset-a)))
-  (when (compressible-code-point-p code1)
-    (let ((offset-b (logandc2 code1 #x7F)))
-      (when (= offset-b (logandc2 code2 #x7F))
-	(return-from find-common-window offset-b))))
+  (when code2
+    (let ((offset-1 (codepoint-to-window-offset code1)))
+      (when offset-1
+	(when (eql offset-1 (codepoint-to-window-offset code2))
+	  (return-from find-common-window offset-1))
+	(let ((offset-2 (logandc2 code1 #x7F)))
+	  (when (= offset-1 (logandc2 code2 #x7F))
+	    (return-from find-common-window offset-2))))))
   nil)
 
 (defun find-suitable-window* (code-point offset-func)
@@ -362,10 +363,12 @@
 (defun use-define-window-p (state code-point next-code-point lookahead-func)
   (declare (type unicode-code-point code-point next-code-point)
 	   (type lookahead-func-type lookahead-func))
-  (and (compressible-code-point-p code-point)
-       (not (scsu-state-fix-dynamic-window state))
+  (and (not (scsu-state-fix-dynamic-window state))
+       (not (standalone-character-p code-point))
+       (codepoint-to-window-offset code-point)
        #+()				; TODO: consider..
        (funcall lookahead-func code-point)
+       #+()				; TODO: consider..
        (find-common-window code-point next-code-point))) ; next is in same window
 
 (defun find-LRU-dynamic-window (state)
@@ -423,6 +426,7 @@
 	 (let ((offset (scsu-state-active-window-offset state)))
 	   (declare (type unicode-code-point offset))
 	   (funcall write-func (+ (- code-point offset) #x80))))
+	;; 2byte
 	((let ((swindow (find-suitable-static-window code-point))) ; in static window
 	   (when swindow
 	     (locally (declare (type window-index swindow))
@@ -436,8 +440,8 @@
 	       (let ((offset (lookup-dynamic-window state dwindow)))
 		 (declare (type unicode-code-point offset))
 		 (cond ((or (null next-code-point) ; quote
-			    #+() ; TODO: use this after fix same-window-p
-			    (not (same-window-p code-point next-code-point)))
+			    #+() ; TODO: use this if 1byte
+			    (not (find-common-window code-point next-code-point)))
 			(scsu-state-update-timestamp state dwindow)
 			(funcall write-func (+ +SQ0+ dwindow))
 			(funcall write-func (+ (- code-point offset) #x80)))
@@ -445,10 +449,16 @@
 			(scsu-change-to-window state dwindow)
 			(funcall write-func (+ +SC0+ dwindow))
 			(encode-unit* state code-point next-code-point write-func lookahead-func))))))))
-	;; Not in current window. We must quote it, define a new window, or use unicode-mode.
+	;; 3byte or more
 	;; TODO: add test code for this part.
+	((use-define-window-p state code-point next-code-point lookahead-func) ; define window
+	 (encode-define-window state
+			       (or (find-common-window code-point next-code-point)
+				   (codepoint-to-window-offset code-point))
+			       write-func +SD0+ +SDX+)
+	 (encode-unit* state code-point next-code-point write-func lookahead-func))
 	((or (standalone-character-p code-point)
-	     ;; not both suitable for unicode-mode => next char can be encoded smally.
+	     ;; not both suitable for unicode-mode => next char can be encoded smally (1byte).
 	     (null next-code-point)
 	     (<= (the unicode-code-point next-code-point) #x7F)
 	     (in-active-window-p state next-code-point)
@@ -460,11 +470,6 @@
 	 (funcall write-func +SQU+)
 	 (funcall write-func (ldb (byte 8 8) code-point))
 	 (funcall write-func (ldb (byte 8 0) code-point)))
-	((use-define-window-p state code-point next-code-point lookahead-func)
-	 ;; define window
-	 (encode-define-window state (find-common-window code-point next-code-point) ; TODO: use use-define-window-p return value
-			       write-func +SD0+ +SDX+)
-	 (encode-unit* state code-point next-code-point write-func lookahead-func))
 	(t
 	 ;; goto unicode-mode.
 	 (funcall write-func +SCU+)

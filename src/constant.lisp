@@ -149,10 +149,6 @@
 (declaim (type (array fixnum (8)) +default-positions-for-dynamically-positioned-windows+))
 
 ;;; Utils
-(defun compressible-code-point-p (code-point)
-  (declare (type unicode-code-point code-point))
-  (not (<= (+ #x3380 #x80) code-point (1- #xE000))))
-
 (defun standalone-character-p (code-point)
   (declare (type unicode-code-point code-point))
   (or (= code-point #xFEFF)		; signature
