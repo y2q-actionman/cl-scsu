@@ -193,12 +193,14 @@
 		    (next-byte (funcall read-func)))
 		(declare (type window-index window)
 			 (type (unsigned-byte 8) next-byte))
-		(when *scsu-state-trace*
-		  (format *debug-io* "[single quote ~X]" next-byte))
 		(scsu-state-update-timestamp state window)
 		(cond ((<= #x0 next-byte #x7f)
+		       (when *scsu-state-trace*
+			 (format *debug-io* "[single quote static ~X]" next-byte))
 		       (+ (lookup-static-window window) next-byte))
 		      (t
+		       (when *scsu-state-trace*
+			 (format *debug-io* "[single quote dynamic ~X]" next-byte))
 		       (+ (lookup-dynamic-window state window)
 			  (logand next-byte #x7f))))))
 	     (#.+SDX+			; Define Extended
