@@ -12,7 +12,7 @@
    (active-window-index :initform 0 :accessor scsu-state-active-window-index)
    (timestamp-vector :initform (make-array +window-count+ :element-type 'fixnum
 					   :initial-element -1)
-		     :accessor scsu-state-timestamp-vector)
+		     :accessor scsu-state-timestamp-vector) ; TODO: remove if decode
    (current-timestamp :initform 0 :accessor scsu-state-current-timestamp :type fixnum)
    (fix-dynamic-window :initarg :fixed-window :initform *scsu-state-default-fix-dynamic-window*
 		       :reader scsu-state-fix-dynamic-window :type boolean)
@@ -477,65 +477,73 @@
 	   (type (or null unicode-code-point) next-code-point)
 	   (type write-func-type write-func)
 	   (type lookahead-func-type lookahead-func))
-  (cond ((< code-point #x20)		
-	 (case code-point
-	   ((#x0 #x9 #xA #xD) (progn))
-	   (t (funcall write-func +SQ0+))) ; tags are quoted to window 0.
-	 (funcall write-func code-point))
-	((<= code-point #x7F)		; Basic Latin
-	 (funcall write-func code-point))
-	((in-active-window-p state code-point) ; in current dynamic window
-	 (let ((offset (scsu-state-active-window-offset state)))
-	   (declare (type unicode-code-point offset))
-	   (funcall write-func (+ (- code-point offset) #x80))))
-	;; 2byte
-	((let ((swindow (find-suitable-static-window code-point))) ; in static window
-	   (when swindow
-	     (locally (declare (type window-index swindow))
-	       (let ((offset (lookup-static-window swindow)))
-		 (declare (type unicode-code-point offset))
-		 (funcall write-func (+ +SQ0+ swindow))
-		 (funcall write-func (- code-point offset)))))))
-	((let ((dwindow (find-suitable-dynamic-window state code-point))) ; in other dynamic window
-	   (when dwindow
-	     (locally (declare (type window-index dwindow))
-	       (let ((offset (lookup-dynamic-window state dwindow)))
-		 (declare (type unicode-code-point offset))
-		 (cond ((or (null next-code-point) ; quote
-			    ;; (encoded-1byte-p state next-code-point)
-			    #+() ; TODO: use this if 1byte
-			    (not (find-common-window code-point next-code-point)))
-			(scsu-state-update-timestamp state dwindow)
-			(funcall write-func (+ +SQ0+ dwindow))
-			(funcall write-func (+ (- code-point offset) #x80)))
-		       (t		; change
-			(scsu-change-to-window state dwindow)
-			(funcall write-func (+ +SC0+ dwindow))
-			(encode-unit* state code-point next-code-point write-func lookahead-func))))))))
-	;; 3byte or more
-	;; TODO: add test code for this part.
-	((use-define-window-p state code-point) ; define window
-	 (encode-define-window state
-			       (or (find-common-window code-point next-code-point)
-				   (codepoint-to-window-offset code-point))
-			       write-func +SD0+ +SDX+)
-	 (encode-unit* state code-point next-code-point write-func lookahead-func))
-	((or (standalone-character-p code-point)
-	     ;; not both suitable for unicode-mode => next char can be encoded smally (1byte).
-	     (encoded-1byte-p state next-code-point)
-	     #+()			; TODO
-	     (find-suitable-static-window next-code-point)
-	     #+()			; TODO
-	     (find-suitable-dynamic-window state next-code-point))
-	 ;; quote unicode.
-	 (funcall write-func +SQU+)
-	 (funcall write-func (ldb (byte 8 8) code-point))
-	 (funcall write-func (ldb (byte 8 0) code-point)))
-	(t
-	 ;; goto unicode-mode.
-	 (funcall write-func +SCU+)
-	 (setf (scsu-state-mode state) :unicode-mode)
-	 (encode-unit* state code-point next-code-point write-func lookahead-func))))
+  (cond
+    ;; 1byte
+    ((< code-point #x20)		
+     (case code-point
+       ((#x0 #x9 #xA #xD) (progn))
+       (t (funcall write-func +SQ0+)))	; tags are quoted to window 0.
+     (funcall write-func code-point))
+    ((<= code-point #x7F)		; Basic Latin
+     (funcall write-func code-point))
+    ((in-active-window-p state code-point) ; in current dynamic window
+     (let ((offset (scsu-state-active-window-offset state)))
+       (declare (type unicode-code-point offset))
+       (funcall write-func (+ (- code-point offset) #x80))))
+    (t
+     (let ((swindow (find-suitable-static-window code-point))
+	   (dwindow (find-suitable-dynamic-window state code-point)))
+       (cond
+	 ;; 2byte
+	 ((and swindow			; in static window
+	       (or (null dwindow)
+		   (null next-code-point)
+		   ;; If continuous in dynamic window, don't use static one.
+		   (not (in-window-p (lookup-dynamic-window state dwindow) next-code-point))))
+	  (locally (declare (type window-index swindow))
+	    (let ((offset (lookup-static-window swindow)))
+	      (declare (type unicode-code-point offset))
+	      (funcall write-func (+ +SQ0+ swindow))
+	      (funcall write-func (- code-point offset)))))
+	 (dwindow			; in other dynamic window
+	  (locally (declare (type window-index dwindow))
+	    (let ((offset (lookup-dynamic-window state dwindow)))
+	      (declare (type unicode-code-point offset))
+	      (cond ((or (null next-code-point) ; quote
+			 ;; (<= next-code-point #x7f)
+			 ;; (encoded-1byte-p state next-code-point)
+			 #+()		; TODO: use this if 1byte
+			 (not (find-common-window code-point next-code-point)))
+		     (scsu-state-update-timestamp state dwindow)
+		     (funcall write-func (+ +SQ0+ dwindow))
+		     (funcall write-func (+ (- code-point offset) #x80)))
+		    (t			; change
+		     (scsu-change-to-window state dwindow)
+		     (funcall write-func (+ +SC0+ dwindow))
+		     (encode-unit* state code-point next-code-point write-func lookahead-func))))))
+	 ;; 3byte or more
+	 ;; TODO: add test code for this part.
+	 ((use-define-window-p state code-point) ; define window
+	  (encode-define-window state
+				(or (find-common-window code-point next-code-point)
+				    (codepoint-to-window-offset code-point))
+				write-func +SD0+ +SDX+)
+	  (encode-unit* state code-point next-code-point write-func lookahead-func))
+	 ((or (standalone-character-p code-point)
+	      ;; not both suitable for unicode-mode => next char can be encoded smally (1byte).
+	      (encoded-1byte-p state next-code-point)
+	      (find-suitable-static-window next-code-point)
+	      #+()			; TODO
+	      (find-suitable-dynamic-window state next-code-point))
+	  ;; quote unicode.
+	  (funcall write-func +SQU+)
+	  (funcall write-func (ldb (byte 8 8) code-point))
+	  (funcall write-func (ldb (byte 8 0) code-point)))
+	 (t
+	  ;; goto unicode-mode.
+	  (funcall write-func +SCU+)
+	  (setf (scsu-state-mode state) :unicode-mode)
+	  (encode-unit* state code-point next-code-point write-func lookahead-func)))))))
 
 (defun encode-unit*/unicode-mode (state code-point next-code-point write-func lookahead-func)
   (declare (type unicode-code-point code-point next-code-point)

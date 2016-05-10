@@ -78,6 +78,7 @@ Our Decompression: ~A~%Decompression from Expected: ~A~2%"
      #x02 #x08 #x0C #xE2 #x16 #xA3 #xB7 #xCB #x0F #x4F #xE1 #x80 #x05 #xEC #x60 #x8D
      #xEA #x06 #xD3 #xE6 #x0F #x8A #x00 #x30 #x44 #x65 #xB9 #xE4 #xFE #xE7 #xC2 #x06
      #xCB #x82)))
+;;; To make optimal compression, we must lookahead 3 chars (at "の歌」がぴったり" Hiraganas)
 
 (defun test-9.4 ()			; all features
   (let ((utf-32-seq
