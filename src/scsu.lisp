@@ -411,16 +411,18 @@
 			   (declare (type window-index i))
 			   (lookup-dynamic-window state i))))
 
-(defun use-define-window-p (state code-point next-code-point lookahead-func)
+(defun use-define-window-p (state code-point &optional next-code-point lookahead-func)
   (declare (type unicode-code-point code-point next-code-point)
 	   (type lookahead-func-type lookahead-func))
   (and (not (scsu-state-fix-dynamic-window state))
        (not (standalone-character-p code-point))
-       (codepoint-to-window-offset code-point)
-       #+()				; TODO: consider..
-       (funcall lookahead-func code-point)
-       #+()				; TODO: consider..
-       (find-common-window code-point next-code-point))) ; next is in same window
+       (let ((offset (codepoint-to-window-offset code-point)))
+	 (cond ((null offset)
+		nil)
+	       (next-code-point
+		(in-window-p offset next-code-point)) ; next is in same window
+	       (t
+		t)))))
 
 (defun find-LRU-dynamic-window (state)
   (loop with ret of-type fixnum = 0
@@ -510,7 +512,7 @@
 			(encode-unit* state code-point next-code-point write-func lookahead-func))))))))
 	;; 3byte or more
 	;; TODO: add test code for this part.
-	((use-define-window-p state code-point next-code-point lookahead-func) ; define window
+	((use-define-window-p state code-point) ; define window
 	 (encode-define-window state
 			       (or (find-common-window code-point next-code-point)
 				   (codepoint-to-window-offset code-point))
@@ -542,14 +544,13 @@
 	 (encode-unit* state code-point next-code-point write-func lookahead-func))
 	((let ((dwindow	(find-suitable-dynamic-window state code-point))) ; in dynamic window
 	   (when (and dwindow
-		      #+()
 		      (encoded-1byte-p state next-code-point dwindow))
 	     (locally (declare (type window-index dwindow))
 	       (setf (scsu-state-mode state) :single-byte-mode)
 	       (scsu-change-to-window state dwindow)
 	       (funcall write-func (+ +UC0+ dwindow))
 	       (encode-unit* state code-point next-code-point write-func lookahead-func)))))
-	((use-define-window-p state code-point next-code-point lookahead-func) ; define window
+	((use-define-window-p state code-point next-code-point) ; define window
 	 (setf (scsu-state-mode state) :single-byte-mode)
 	 (encode-define-window state (or (find-common-window code-point next-code-point)
 					 (codepoint-to-window-offset code-point))
