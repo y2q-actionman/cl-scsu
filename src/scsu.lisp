@@ -341,16 +341,18 @@
 
 (defun decode-unit-from-bytes (bytes &key (start 0) (end (length bytes))
 				       (state (make-instance 'scsu-state)))
-  ;; TODO: use dynamic-extent
-  (let* ((ret-list (multiple-value-list 
-		    (decode-to-string bytes :start1 start :end1 end :state state)))
-	 (ret-string (first ret-list))
-	 (ret-len (second ret-list))
-	 (ret-char (if (>= ret-len 1) (char ret-string 0) nil)))
-    (declare (type list ret-list)
-	     (type string ret-string)
-	     (type fixnum ret-len))
-    (apply #'values ret-char (rest ret-list))))
+  (let ((tmp-str (make-array 1 :element-type 'character)))
+    (declare (type simple-string tmp-str)
+	     (dynamic-extent tmp-str))
+    (let* ((ret-list (multiple-value-list 
+		      (decode-to-string bytes :start1 start :end1 end
+					:string tmp-str :start2 0 :end2 1
+					:state state)))
+	   (ret-len (second ret-list))
+	   (ret-char (if (>= ret-len 1) (schar tmp-str 0) nil)))
+      (declare (type list ret-list)
+	       (type fixnum ret-len))
+      (apply #'values ret-char (rest ret-list)))))
 
 
 ;;; Encode
