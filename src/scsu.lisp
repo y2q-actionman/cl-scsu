@@ -144,6 +144,10 @@
 			      ,@(if (not writer-supplied-p) `((function ,writer)))))
 	     ,@body))))))
 
+(defun scsu-trace-output (format-control &rest format-arguments)
+  (when *scsu-state-trace*
+    (apply #'format *trace-output* format-control format-arguments)))
+
 
 ;;; Decoder
 (deftype read-func-type ()
@@ -183,29 +187,24 @@
     (cond ((<= 0 byte #x1F)		; Tag bytes.
 	   (ecase byte
 	     ((#x0 #x9 #xA #xD)		; pass
-	      (when *scsu-state-trace*
-		(format *trace-output* "[single-byte ASCII ~X]" byte))
+	      (scsu-trace-output "[single-byte ASCII ~X]" byte)
 	      byte)
 	     ((#.+SQ0+ #.+SQ1+ #.+SQ2+ #.+SQ3+ #.+SQ4+ #.+SQ5+ #.+SQ6+ #.+SQ7+) ; Quote from Window
-	      (when *scsu-state-trace*
-		(format *trace-output* "SQ~D " (find-SQn-window byte)))
+	      (scsu-trace-output "SQ~D " (find-SQn-window byte))
 	      (let ((window (find-SQn-window byte))
 		    (next-byte (funcall read-func)))
 		(declare (type window-index window)
 			 (type (unsigned-byte 8) next-byte))
 		(scsu-state-update-timestamp state window)
 		(cond ((<= #x0 next-byte #x7f)
-		       (when *scsu-state-trace*
-			 (format *trace-output* "[single quote static ~X]" next-byte))
+		       (scsu-trace-output "[single quote static ~X]" next-byte)
 		       (+ (lookup-static-window window) next-byte))
 		      (t
-		       (when *scsu-state-trace*
-			 (format *trace-output* "[single quote dynamic ~X]" next-byte))
+		       (scsu-trace-output "[single quote dynamic ~X]" next-byte)
 		       (+ (lookup-dynamic-window state window)
 			  (logand next-byte #x7f))))))
 	     (#.+SDX+			; Define Extended
-	      (when *scsu-state-trace*
-		(format *trace-output* "SDX "))
+	      (scsu-trace-output "SDX ")
 	      (decode-define-window-extended state read-func)
 	      (decode-unit* state read-func))
 	     (#xC
@@ -213,40 +212,33 @@
 		     :format-control "reserved byte ~A is used"
 		     :format-arguments (list byte)))
 	     (#.+SQU+			; Quote Unicode
-	      (when *scsu-state-trace*
-		(format *trace-output* "SQU "))
+	      (scsu-trace-output "SQU ")
 	      (let ((char (decode-quote-unicode read-func)))
 		(prog1 char
-		  (when *scsu-state-trace*
-		    (format *trace-output* "[quote unicode ~X]" char)))))
+		  (scsu-trace-output "[quote unicode ~X]" char))))
 	     (#.+SCU+			; Change to Unicode
-	      (when *scsu-state-trace*
-		(format *trace-output* "SCU "))
+	      (scsu-trace-output "SCU ")
 	      (setf (scsu-state-mode state) :unicode-mode)
 	      (decode-unit* state read-func))
 	     ((#.+SC0+ #.+SC1+ #.+SC2+ #.+SC3+ #.+SC4+ #.+SC5+ #.+SC6+ #.+SC7+) ; Change to Window
-	      (when *scsu-state-trace*
-		(format *trace-output* "SC~D " (find-SCn-window byte)))
+	      (scsu-trace-output "SC~D " (find-SCn-window byte))
 	      (scsu-change-to-window state (find-SCn-window byte))
 	      (decode-unit* state read-func))
 	     ((#.+SD0+ #.+SD1+ #.+SD2+ #.+SD3+ #.+SD4+ #.+SD5+ #.+SD6+ #.+SD7+) ; Define Window
-	      (when *scsu-state-trace*
-		(format *trace-output* "SD~D " (find-SDn-window byte)))
+	      (scsu-trace-output "SD~D " (find-SDn-window byte))
 	      (scsu-define-window state
 				  (find-SDn-window byte)
 				  (lookup-window-offset-table (funcall read-func)))
 	      (decode-unit* state read-func))))
 	  ((<= byte #x7F)		  ; Basic Latin Block.
-	   (when *scsu-state-trace*
-	     (format *trace-output* "[single-byte ASCII ~X]" byte))
+	   (scsu-trace-output "[single-byte ASCII ~X]" byte)
 	   byte)
 	  (t				; In active dynamic window.
 	   (let ((offset (scsu-state-active-window-offset state))
 		 (position (logand byte #x7F))) ; (- byte #x80)
 	     (declare (type unicode-code-point offset)
 		      (type (unsigned-byte 8) position))
-	     (when *scsu-state-trace*
-	       (format *trace-output* "[single-byte dynamic window ~X]" byte))
+	     (scsu-trace-output "[single-byte dynamic window ~X]" byte)
 	     (+ offset position))))))
 
 (defun decode-unit*/unicode-mode (state read-func)
@@ -255,29 +247,24 @@
     (declare (type (unsigned-byte 8) byte))
     (case byte
       ((#.+UC0+ #.+UC1+ #.+UC2+ #.+UC3+ #.+UC4+ #.+UC5+ #.+UC6+ #.+UC7+) ; Change to Window
-       (when *scsu-state-trace*
-	 (format *trace-output* "UC~D " (find-UCn-window byte)))
+       (scsu-trace-output "UC~D " (find-UCn-window byte))
        (scsu-change-to-window state (find-UCn-window byte))
        (setf (scsu-state-mode state) :single-byte-mode)
        (decode-unit* state read-func))
       ((#.+UD0+ #.+UD1+ #.+UD2+ #.+UD3+ #.+UD4+ #.+UD5+ #.+UD6+ #.+UD7+) ; Define Window
-       (when *scsu-state-trace*
-	 (format *trace-output* "UD~D " (find-UDn-window byte)))
+       (scsu-trace-output "UD~D " (find-UDn-window byte))
        (scsu-define-window state
 			   (find-UDn-window byte)
 			   (lookup-window-offset-table (funcall read-func)))
        (setf (scsu-state-mode state) :single-byte-mode)
        (decode-unit* state read-func))
       (#.+UQU+				; Quote Unicode
-       (when *scsu-state-trace*
-	 (format *trace-output* "UQU "))
+       (scsu-trace-output "UQU ")
        (let ((char (decode-quote-unicode read-func)))
 	 (prog1 char
-	   (when *scsu-state-trace*
-	     (format *trace-output* "[quote unicode ~X]" char)))))
+	   (scsu-trace-output "[quote unicode ~X]" char))))
       (#.+UDX+				; Define Extended
-       (when *scsu-state-trace*
-	 (format *trace-output* "UDX "))
+       (scsu-trace-output "UDX ")
        (decode-define-window-extended state read-func)
        (setf (scsu-state-mode state) :single-byte-mode)
        (decode-unit* state read-func))
@@ -289,8 +276,7 @@
        ;; (assert (or (<= #x00 byte #xDF) (<= #xF3 byte #xFF)))
        (let ((next (funcall read-func)))
 	 (declare (type (unsigned-byte 8) next))
-	 (when *scsu-state-trace*
-	   (format *trace-output* "[Unicode char ~X,~X]" byte next))
+	 (scsu-trace-output "[Unicode char ~X,~X]" byte next)
 	 (logior (ash byte 8) next))))))
 
 (defun decode-unit* (state read-func)
@@ -317,8 +303,7 @@
   (declare (type (array (unsigned-byte 8) *) bytes)
 	   (type fixnum start1 end1 start2 end2)
 	   (type string string))
-  (when (scsu-state-trace state)
-    (format *trace-output* "~2&"))
+  (scsu-trace-output "~2&")
   (with-buffer-accessor (:reader pick-byte :current src-current)
       (bytes start1 end1 :element-type (unsigned-byte 8))
     (with-buffer-accessor (:writer put-char :current dst-current)
