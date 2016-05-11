@@ -34,6 +34,7 @@ Our Decompression: ~A~%Decompression from Expected: ~A~2%"
       (assert-equal decompressed string)
       (unless (equalp compressed expected-decompression)
 	(when (> compressed-len expected-compression-len)
+	  #+()
 	  (warn "Our compressed length ~D is longer than expected compression length ~D~%"
 		compressed-len expected-compression-len)))))
   t)
@@ -102,6 +103,7 @@ Our Decompression: ~A~%Decompression from Expected: ~A~2%"
        #x0D #x0A
        #x41 #x10 #xDF #x12 #x81 #x03 #x5F #x10 #xDF #x13 #xDF #x14 #x80
        #x15 #xFF))))
+;;; This example uses SDX for U+10FFFF. cl-scsu don't do so because U+10FFFF is a non-character.
 
 (defun test-1-examples ()
   (and (test-9.1)
