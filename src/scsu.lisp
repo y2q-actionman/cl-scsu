@@ -78,13 +78,22 @@
 ;;; Util
 (defmacro with-scsu-error-handling
     ((state &key src dst return) &body body)
-  (alexandria:with-gensyms (%state %m %d-w %a-w-i %src %dst)
+  (alexandria:with-gensyms (%state %m %d-w %d-w-contents %a-w-i %t-v %t-v-contents %c-t %src %dst)
     `(let* ((,%state ,state)
-	    ;; TODO: save timestamp slots
 	    (,%m (slot-value ,%state 'mode))
-	    (,%d-w (slot-value ,%state 'dynamic-window)) ; TODO: hold entries
+	    (,%d-w (slot-value ,%state 'dynamic-window))
+	    (,%d-w-contents (make-array +window-count+ :element-type 'fixnum))
 	    (,%a-w-i (slot-value ,%state 'active-window-index))
+	    (,%t-v (slot-value ,%state 'timestamp-vector))
+	    (,%t-v-contents (make-array +window-count+ :element-type 'fixnum))
+	    (,%c-t (slot-value ,%state 'current-timestamp))
 	    (,%src ,src) (,%dst ,dst))	; Holds a restartable state.
+       (declare (type (simple-array fixnum 8) ,%d-w-contents ,%t-v-contents)
+		(dynamic-extent ,%d-w-contents ,%t-v-contents))
+       (when ,%d-w
+	 (replace ,%d-w-contents ,%d-w))
+       (when ,%t-v
+	 (replace ,%t-v-contents ,%t-v))
        (restart-case
 	   (handler-bind ((scsu-error
 			   (alexandria:named-lambda scsu-error-filler (c)
@@ -95,8 +104,10 @@
 	 (restore-state ()
 	   :report "Restore SCSU state to a restartable previous state, and return"
 	   (setf (slot-value ,%state 'mode) ,%m
-		 (slot-value ,%state 'dynamic-window) ,%d-w
-		 (slot-value ,%state 'active-window-index) ,%a-w-i)
+		 (slot-value ,%state 'dynamic-window) (if ,%d-w (replace ,%d-w ,%d-w-contents) nil)
+		 (slot-value ,%state 'active-window-index) ,%a-w-i
+		 (slot-value ,%state 'timestamp-vector) (if ,%t-v (replace ,%t-v ,%t-v-contents) nil)
+		 (slot-value ,%state 'current-timestamp) ,%c-t)
 	   (funcall ,return ,%dst ,%src))))))
 
 (defmacro with-buffer-accessor ((&key (reader (gensym) reader-supplied-p)
