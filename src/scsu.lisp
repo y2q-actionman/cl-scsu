@@ -89,8 +89,9 @@
     ((state &key src dst return) &body body)
   (alexandria:with-gensyms (%state %m %d-w %a-w-i %src %dst)
     `(let* ((,%state ,state)
+	    ;; TODO: save timestamp slots
 	    (,%m (slot-value ,%state 'mode))
-	    (,%d-w (slot-value ,%state 'dynamic-window))
+	    (,%d-w (slot-value ,%state 'dynamic-window)) ; TODO: hold entries
 	    (,%a-w-i (slot-value ,%state 'active-window-index))
 	    (,%src ,src) (,%dst ,dst))	; Holds a restartable state.
        (restart-case
@@ -337,6 +338,7 @@
 
 (defun decode-unit-from-bytes (bytes &key (start 0) (end (length bytes))
 				       (state (make-instance 'scsu-state)))
+  ;; TODO: use dynamic-extent
   (let* ((ret-list (multiple-value-list 
 		    (decode-to-string bytes :start1 start :end1 end :state state)))
 	 (ret-string (first ret-list))
@@ -553,6 +555,7 @@
 (defun encode-unit* (state code-point next-code-point write-func)
   (declare (type unicode-code-point code-point next-code-point)
 	   (type write-func-type write-func))
+  ;; TODO: automatically merge surrogate pairs
   (ecase (scsu-state-mode state)
     (:single-byte-mode
      (encode-unit*/single-byte-mode state code-point next-code-point write-func))
