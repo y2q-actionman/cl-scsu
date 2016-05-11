@@ -9,9 +9,8 @@
    (dynamic-window :initform nil	; see lookup-dynamic-window
 		   :accessor scsu-state-dynamic-window)
    (active-window-index :initform 0 :accessor scsu-state-active-window-index)
-   (timestamp-vector :initform (make-array +window-count+ :element-type 'fixnum
-					   :initial-element -1)
-		     :accessor scsu-state-timestamp-vector) ; TODO: remove if decode -- allocate at initialize-timestamp
+   (timestamp-vector :initform nil	; see scsu-state-timestamp and initialize-timestamp
+		     :accessor scsu-state-timestamp-vector)
    (current-timestamp :initform 0 :accessor scsu-state-current-timestamp :type fixnum)
    (fix-dynamic-window :initarg :fixed-window :initform *scsu-state-default-fix-dynamic-window*
 		       :reader scsu-state-fix-dynamic-window :type boolean)
@@ -44,10 +43,12 @@
 
 (defmethod scsu-state-timestamp (state window)
   (declare (type window-index window))
+  ;; (assert (scsu-state-timestamp-vector state))
   (aref (scsu-state-timestamp-vector state) window))
 
 (defmethod (setf scsu-state-timestamp) (val state window)
   (declare (type window-index window))
+  ;; (assert (scsu-state-timestamp-vector state))
   (setf (aref (scsu-state-timestamp-vector state) window) val))
 
 (defmethod scsu-state-reset ((state scsu-state))
@@ -593,7 +594,13 @@
 	  (t
 	   (encode-unit* state code-point next-code-point write-func)))))
 
-(defun initialize-timestamp (state initial-priority string start end)
+(defun initialize-timestamp (state initial-priority &optional string start end)
+  (etypecase (scsu-state-timestamp-vector state)
+    ((array fixnum)
+     (progn))				; nop
+    (null
+     (setf (scsu-state-timestamp-vector state)
+	   (make-array +window-count+ :element-type 'fixnum :initial-element -1))))
   (cond
     ((eq initial-priority :lookahead)
      (let ((priority-array (make-array '(8) :element-type 'fixnum :initial-element 0)))
@@ -602,7 +609,7 @@
        (loop for i of-type fixnum from start below end
 	  as w = (find-suitable-dynamic-window state (char-code (char string i)))
 	  when w do (incf (aref priority-array w)))
-       (initialize-timestamp state priority-array nil 0 0)))
+       (initialize-timestamp state priority-array)))
     ((eq initial-priority :random)
        (loop for w of-type fixnum from 0 below +window-count+
 	  do (setf (scsu-state-timestamp state w) (- (random 100)))))
@@ -626,7 +633,8 @@
   (declare (type string string)
 	   (type (array (unsigned-byte 8) *) bytes)	   
 	   (type fixnum start1 end1 start2 end2))
-  (initialize-timestamp state initial-priority string start1 end1)
+  (unless (scsu-state-timestamp-vector state)
+    (initialize-timestamp state initial-priority string start1 end1))
   (with-buffer-accessor (:reader pick-char :current src-current)
       (string start1 end1 :element-type character)
     (with-buffer-accessor (:writer put-byte :current dst-current)
