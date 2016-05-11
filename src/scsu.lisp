@@ -281,12 +281,12 @@
 	 (scsu-trace-output "[Unicode char ~X,~X]" byte next)
 	 (logior (ash byte 8) next))))))
 
-(defun decode-unit* (state read-func)
+(defun decode-unit* (state read-func)	; recursion point
   (ecase (scsu-state-mode state)
     (:single-byte-mode (decode-unit*/single-byte-mode state read-func))
     (:unicode-mode (decode-unit*/unicode-mode state read-func))))
 
-(defun decode-unit (state read-func)	; TODO: use defmethod :around
+(defun decode-unit (state read-func)
   (prog2 (scsu-trace-output "~&")
       (decode-unit* state read-func)
     (scsu-trace-output "~%")))
@@ -557,7 +557,7 @@
 	   (funcall write-func +UQU+))
 	 (write-16bit-code-point code-point write-func))))
 
-(defun encode-unit* (state code-point next-code-point write-func)
+(defun encode-unit* (state code-point next-code-point write-func) ; recursion point
   (declare (type unicode-code-point code-point next-code-point)
 	   (type write-func-type write-func))
   (ecase (scsu-state-mode state)
@@ -615,7 +615,7 @@
 	  do (setf (scsu-state-timestamp state w)
 		   (- (aref initial-priority w) max)))))
     (t
-     (error "message is unser construction")))) ; TODO
+     (error "initial-priority must be one of :lookahead, :random, or fixnum array"))))
 
 (defun encode-from-string (string
 			   &key (start1 0) (end1 (length string))
