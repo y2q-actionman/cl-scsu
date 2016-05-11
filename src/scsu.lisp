@@ -11,7 +11,7 @@
    (active-window-index :initform 0 :accessor scsu-state-active-window-index)
    (timestamp-vector :initform (make-array +window-count+ :element-type 'fixnum
 					   :initial-element -1)
-		     :accessor scsu-state-timestamp-vector) ; TODO: remove if decode
+		     :accessor scsu-state-timestamp-vector) ; TODO: remove if decode -- allocate at initialize-timestamp
    (current-timestamp :initform 0 :accessor scsu-state-current-timestamp :type fixnum)
    (fix-dynamic-window :initarg :fixed-window :initform *scsu-state-default-fix-dynamic-window*
 		       :reader scsu-state-fix-dynamic-window :type boolean)
@@ -49,16 +49,6 @@
 (defmethod (setf scsu-state-timestamp) (val state window)
   (declare (type window-index window))
   (setf (aref (scsu-state-timestamp-vector state) window) val))
-
-(defmethod scsu-state-update-timestamp (state window)
-  (declare (type window-index window))
-  (let ((timestamp (incf (scsu-state-current-timestamp state))))
-    (declare (type fixnum timestamp))
-    (setf (scsu-state-timestamp state window) timestamp)))
-
-(defmethod scsu-state-has-empty-window-p (state)
-  (loop for w of-type fixnum from 0 below +window-count+
-     thereis (minusp (aref (scsu-state-timestamp-vector state) w))))
 
 (defmethod scsu-state-reset ((state scsu-state))
   (slot-makunbound state 'mode)
@@ -164,7 +154,6 @@
 
 (defun scsu-change-to-window (state window)
   (declare (type window-index window))
-  (scsu-state-update-timestamp state window)
   (setf (scsu-state-active-window-index state) window))
 
 (defun scsu-define-window (state window offset)
@@ -192,12 +181,11 @@
 	      (scsu-trace-output "[single-byte ASCII ~X]" byte)
 	      byte)
 	     ((#.+SQ0+ #.+SQ1+ #.+SQ2+ #.+SQ3+ #.+SQ4+ #.+SQ5+ #.+SQ6+ #.+SQ7+) ; Quote from Window
-	      (scsu-trace-output "SQ~D " (find-SQn-window byte))
 	      (let ((window (find-SQn-window byte))
 		    (next-byte (funcall read-func)))
 		(declare (type window-index window)
 			 (type (unsigned-byte 8) next-byte))
-		(scsu-state-update-timestamp state window)
+		(scsu-trace-output "SQ~D " window)
 		(cond ((<= #x0 next-byte #x7f)
 		       (scsu-trace-output "[single quote static ~X]" next-byte)
 		       (+ (lookup-static-window window) next-byte))
@@ -223,14 +211,15 @@
 	      (setf (scsu-state-mode state) :unicode-mode)
 	      (decode-unit* state read-func))
 	     ((#.+SC0+ #.+SC1+ #.+SC2+ #.+SC3+ #.+SC4+ #.+SC5+ #.+SC6+ #.+SC7+) ; Change to Window
-	      (scsu-trace-output "SC~D " (find-SCn-window byte))
-	      (scsu-change-to-window state (find-SCn-window byte))
+	      (let ((window (find-SCn-window byte)))
+		(scsu-trace-output "SC~D " window)
+		(scsu-change-to-window state window))
 	      (decode-unit* state read-func))
 	     ((#.+SD0+ #.+SD1+ #.+SD2+ #.+SD3+ #.+SD4+ #.+SD5+ #.+SD6+ #.+SD7+) ; Define Window
-	      (scsu-trace-output "SD~D " (find-SDn-window byte))
-	      (scsu-define-window state
-				  (find-SDn-window byte)
-				  (lookup-window-offset-table (funcall read-func)))
+	      (let ((window (find-SDn-window byte)))
+		(scsu-trace-output "SD~D " window)
+		(scsu-define-window state window
+				    (lookup-window-offset-table (funcall read-func))))
 	      (decode-unit* state read-func))))
 	  ((<= byte #x7F)		  ; Basic Latin Block.
 	   (scsu-trace-output "[single-byte ASCII ~X]" byte)
@@ -249,16 +238,17 @@
     (declare (type (unsigned-byte 8) byte))
     (case byte
       ((#.+UC0+ #.+UC1+ #.+UC2+ #.+UC3+ #.+UC4+ #.+UC5+ #.+UC6+ #.+UC7+) ; Change to Window
-       (scsu-trace-output "UC~D " (find-UCn-window byte))
-       (scsu-change-to-window state (find-UCn-window byte))
-       (setf (scsu-state-mode state) :single-byte-mode)
+       (let ((window (find-UCn-window byte)))
+	 (scsu-trace-output "UC~D " window)
+	 (scsu-change-to-window state window)
+	 (setf (scsu-state-mode state) :single-byte-mode))
        (decode-unit* state read-func))
       ((#.+UD0+ #.+UD1+ #.+UD2+ #.+UD3+ #.+UD4+ #.+UD5+ #.+UD6+ #.+UD7+) ; Define Window
-       (scsu-trace-output "UD~D " (find-UDn-window byte))
-       (scsu-define-window state
-			   (find-UDn-window byte)
+       (let ((window (find-UDn-window byte)))
+	 (scsu-trace-output "UD~D " window)
+	 (scsu-define-window state window
 			   (lookup-window-offset-table (funcall read-func)))
-       (setf (scsu-state-mode state) :single-byte-mode)
+	 (setf (scsu-state-mode state) :single-byte-mode))
        (decode-unit* state read-func))
       (#.+UQU+				; Quote Unicode
        (scsu-trace-output "UQU ")
@@ -409,6 +399,12 @@
 	       (t
 		t)))))
 
+(defun update-timestamp (state &optional (window (scsu-state-active-window-index state)))
+  (declare (type window-index window))
+  (let ((timestamp (incf (scsu-state-current-timestamp state))))
+    (declare (type fixnum timestamp))
+    (setf (scsu-state-timestamp state window) timestamp)))
+
 (defun find-LRU-dynamic-window (state)
   (loop with ret of-type fixnum = 0
      with min of-type fixnum = (scsu-state-timestamp state 0)
@@ -466,6 +462,7 @@
     ((<= code-point #x7F)		; Basic Latin
      (funcall write-func code-point))
     ((in-active-window-p state code-point) ; in current dynamic window
+     (update-timestamp state)
      (let ((offset (scsu-state-active-window-offset state)))
        (declare (type unicode-code-point offset))
        (funcall write-func (+ (- code-point offset) #x80))))
@@ -489,7 +486,7 @@
 	    (let ((offset (lookup-dynamic-window state dwindow)))
 	      (declare (type unicode-code-point offset))
 	      (cond ((encoded-1byte-p state next-code-point) ; quote
-		     (scsu-state-update-timestamp state dwindow)
+		     (update-timestamp state dwindow)
 		     (funcall write-func (+ +SQ0+ dwindow))
 		     (funcall write-func (+ (- code-point offset) #x80)))
 		    (t			; change
