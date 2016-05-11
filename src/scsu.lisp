@@ -2,7 +2,6 @@
 
 ;;; State
 (defvar *scsu-state-default-fix-dynamic-window* nil)
-(defvar *scsu-state-default-trace* nil)
 (defvar *scsu-state-trace* nil)
 
 (defclass scsu-state ()
@@ -16,8 +15,7 @@
    (current-timestamp :initform 0 :accessor scsu-state-current-timestamp :type fixnum)
    (fix-dynamic-window :initarg :fixed-window :initform *scsu-state-default-fix-dynamic-window*
 		       :reader scsu-state-fix-dynamic-window :type boolean)
-   (trace :initarg :trace :initform *scsu-state-default-trace*
-	  :reader scsu-state-trace :type boolean)))
+   ))
 
 (defmethod lookup-dynamic-window (state window)
   (declare (type window-index window))
@@ -285,13 +283,9 @@
     (:unicode-mode (decode-unit*/unicode-mode state read-func))))
 
 (defun decode-unit (state read-func)	; TODO: use defmethod :around
-  (let ((*scsu-state-trace* (scsu-state-trace state)))
-    (when *scsu-state-trace*
-      (fresh-line *trace-output*))
-    (prog1 (decode-unit* state read-func)
-      (when *scsu-state-trace*
-	(terpri *trace-output*)
-	(force-output *trace-output*)))))
+  (prog2 (scsu-trace-output "~&")
+      (decode-unit* state read-func)
+    (scsu-trace-output "~%")))
 
 (defun decode-to-string (bytes
 			 &key (start1 0) (end1 (length bytes))
