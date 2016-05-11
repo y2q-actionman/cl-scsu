@@ -116,6 +116,8 @@
     ((<= #xE000 code-point (+ #xFF80 #x7F)) ; half-blocks from U+E000 to U+FF80
      (values (logandc2 code-point #x7F)
 	     (floor (- code-point #xAC00) #x80)))
+    ((<= #x10000 code-point) 		; SMP
+     (values (logandc2 code-point #x7F) nil))
     (t
      nil)))
 

@@ -122,11 +122,14 @@
 	   (labels
 	       ((,%raise-scsu-error (fmt &rest args)
 		  (apply #'error 'scsu-error :format-control fmt args))
-		(,reader ()
+		(,reader (&optional (peek-mode nil))
 		  (cond ((< ,current ,end)
 			 (prog1 (aref ,buffer ,current)
-			   (incf ,current)))
-			(t (,%raise-scsu-error "Reached to the end of the read buffer"))))
+			   (unless peek-mode
+			     (incf ,current))))
+			(t (if peek-mode
+			       nil
+			       (,%raise-scsu-error "Reached to the end of the read buffer")))))
 		(,writer (c)
 		  (let ((fmt "Reached to the end of the write buffer"))
 		    (cond ((< ,current ,end)
@@ -150,7 +153,7 @@
 
 ;;; Decoder
 (deftype read-func-type ()
-  '(function () (unsigned-byte 8)))
+  '(function () (or null (unsigned-byte 8))))
 
 (defun decode-quote-unicode (read-func)
   (declare (type read-func-type read-func))
@@ -555,12 +558,41 @@
 (defun encode-unit* (state code-point next-code-point write-func)
   (declare (type unicode-code-point code-point next-code-point)
 	   (type write-func-type write-func))
-  ;; TODO: automatically merge surrogate pairs
   (ecase (scsu-state-mode state)
     (:single-byte-mode
      (encode-unit*/single-byte-mode state code-point next-code-point write-func))
     (:unicode-mode
      (encode-unit*/unicode-mode state code-point next-code-point write-func))))
+
+(defun encode-unit (state read-func write-func)
+  (declare (type read-func-type read-func))
+  (let* ((char (funcall read-func))
+	 (next-char (funcall read-func t))
+	 (code-point (char-code char))
+	 (next-code-point (and next-char (char-code next-char))))
+    (declare (type character char)
+	     (type (or null character) next-char)
+	     (type unicode-code-point code-point)
+	     (type (or null unicode-code-point) next-code-point))
+    (cond ((<= #xD800 code-point #xDBFF) ; high surrogate
+	   (unless (and next-code-point
+			(<= #xDC00 next-code-point #xDFFF))
+	     (error 'scsu-error
+		    :format-control "High surrogate appeared alone"))
+	   (let ((u32-code-point (decode-from-surrogate-pair code-point next-code-point))
+		 (low (funcall read-func))
+		 (next-char2 (funcall read-func t)))
+	     (declare (ignorable low)
+		      (type (or null character) next-char2))
+	     (assert (eql low next-char))
+	     (encode-unit* state u32-code-point
+			   (and next-char2 (char-code next-char2))
+			   write-func)))
+	  ((<= #xDC00 code-point #xDFFF) ; low surrogate
+	   (error 'scsu-error
+		  :format-control "Low surrogate appeared alone"))
+	  (t
+	   (encode-unit* state code-point next-code-point write-func)))))
 
 (defun initialize-timestamp (state initial-priority string start end)
   (cond
@@ -596,19 +628,18 @@
 	   (type (array (unsigned-byte 8) *) bytes)	   
 	   (type fixnum start1 end1 start2 end2))
   (initialize-timestamp state initial-priority string start1 end1)
-  (with-buffer-accessor (:writer put-byte :current dst-current)
-      (bytes start2 end2 :element-type (unsigned-byte 8))
-    (loop for src-current of-type fixnum from start1 below end1
-       for next of-type fixnum from (1+ start1)
-       as code-point = (char-code (char string  src-current)) then next-code-point
-       as next-code-point = (if (>= next end1) nil (char-code (char string next)))
-       do (with-scsu-error-handling
-	      (state :src src-current :dst dst-current
-		     :return (lambda (dst src)
-			       (return-from encode-from-string
-				 (values bytes dst src state))))
-	    (encode-unit* state code-point next-code-point #'put-byte)))
-    (values bytes dst-current end1 state)))
+  (with-buffer-accessor (:reader pick-char :current src-current)
+      (string start1 end1 :element-type character)
+    (with-buffer-accessor (:writer put-byte :current dst-current)
+	(bytes start2 end2 :element-type (unsigned-byte 8))
+      (loop while (< src-current end1)
+	 do (with-scsu-error-handling
+		(state :src src-current :dst dst-current
+		       :return (lambda (dst src)
+				 (return-from encode-from-string
+				   (values bytes dst src state))))
+	      (encode-unit state #'pick-char #'put-byte)))
+      (values bytes dst-current end1 state))))
 
 ;; The required length is out of BMP case.
 ;; - SQU, <high surrogate 1>, <high surrogate 2>, SQU, <low surrogate 1>, <low surrogate 2>
