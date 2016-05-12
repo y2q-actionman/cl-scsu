@@ -119,7 +119,7 @@
     ((<= #x10000 code-point) 		; SMP
      (values (logandc2 code-point #x7F) nil))
     (t
-     nil)))
+     (values nil nil))))
 
 
 (alexandria:define-constant +static-windows+

@@ -368,18 +368,6 @@
 (defun in-active-window-p (state code-point)
   (in-window-p (scsu-state-active-window-offset state) code-point))
 
-(defun find-common-window (code1 code2)
-  (declare (type unicode-code-point code1 code2))
-  (when code2
-    (let ((offset-1 (codepoint-to-window-offset code1)))
-      (when offset-1
-	(when (eql offset-1 (codepoint-to-window-offset code2))
-	  (return-from find-common-window offset-1))
-	(let ((offset-2 (logandc2 code1 #x7F)))
-	  (when (= offset-1 (logandc2 code2 #x7F))
-	    (return-from find-common-window offset-2))))))
-  nil)
-
 (defun find-suitable-window* (code-point offset-func)
   (declare (type unicode-code-point code-point)
 	   (type (function (fixnum)) offset-func))
@@ -399,17 +387,36 @@
 			   (declare (type window-index i))
 			   (lookup-dynamic-window state i))))
 
+(defun find-common-window (code1 code2)
+  (declare (type unicode-code-point code1 code2))
+  (unless code2
+    (return-from find-common-window nil))
+  (multiple-value-bind (offset-1 index-1)
+      (codepoint-to-window-offset code1)
+    (unless offset-1
+      (return-from find-common-window nil)) ; not compressible
+    (let ((offset-2 (codepoint-to-window-offset code2)))
+      (unless offset-2
+	(return-from find-common-window nil)) ; not compressible
+      (cond ((= offset-1 offset-2)
+	     (values offset-1 index-1))
+	    ((= (logandc2 code1 #x7F) (logandc2 code2 #x7F))
+	     (codepoint-to-window-offset (logandc2 code1 #x7F)))
+	    (t
+	     nil)))))
+
 (defun use-define-window-p (state code-point &optional next-code-point)
   (declare (type unicode-code-point code-point next-code-point))
   (and (not (scsu-state-fix-dynamic-window state))
        (not (standalone-character-p code-point))
-       (let ((offset (codepoint-to-window-offset code-point)))
+       (multiple-value-bind (offset table-index)
+	   (codepoint-to-window-offset code-point)
 	 (cond ((null offset)
-		nil)
+		nil)			; not compressible
 	       (next-code-point
-		(in-window-p offset next-code-point)) ; next is in same window
+		(find-common-window code-point next-code-point))
 	       (t
-		t)))))
+		(values offset table-index))))))
 
 (defun update-timestamp (state &optional (window (scsu-state-active-window-index state)))
   (declare (type window-index window))
@@ -427,26 +434,23 @@
 	      min ts)
      finally (return ret)))
 
-(defun encode-define-window (state offset write-func define-window-tag define-extended-tag)
+(defun encode-define-window (state offset table-index write-func define-window-tag define-extended-tag)
   (declare (type unicode-code-point offset)
+	   (type (unsigned-byte 8) table-index)
  	   (type write-func-type write-func)
 	   (type (unsigned-byte 8) define-window-tag define-extended-tag))
   (let ((new-window (find-LRU-dynamic-window state)))
     (declare (type window-index new-window))
-    (multiple-value-bind (_ table-index)
-	(codepoint-to-window-offset offset)
-      (declare (ignore _)
-	       (type (or null (unsigned-byte 8)) table-index))
-      (scsu-define-window state new-window offset)
-      (cond ((<= offset #xFFFF)		; 'SDn' case
-	     (funcall write-func (+ define-window-tag new-window))
-	     (funcall write-func table-index))
-	    (t				; 'SDX' case
-	     (multiple-value-bind (hbyte lbyte)
-		 (encode-extended-window-tag new-window offset)
-	       (funcall write-func define-extended-tag)
-	       (funcall write-func hbyte)
-	       (funcall write-func lbyte)))))))
+    (scsu-define-window state new-window offset)
+    (cond ((<= offset #xFFFF)		; 'SDn' case
+	   (funcall write-func (+ define-window-tag new-window))
+	   (funcall write-func table-index))
+	  (t				; 'SDX' case
+	   (multiple-value-bind (hbyte lbyte)
+	       (encode-extended-window-tag new-window offset)
+	     (funcall write-func define-extended-tag)
+	     (funcall write-func hbyte)
+	     (funcall write-func lbyte))))))
 
 (defun encoded-1byte-p (state code-point &optional (window (scsu-state-active-window-index state)))
   (declare (type (or null unicode-code-point) code-point)
@@ -507,12 +511,11 @@
 		     (encode-unit* state code-point next-code-point write-func))))))
 	 ;; 3byte or more
 	 ;; TODO: add test code for this part.
-	 ((use-define-window-p state code-point) ; define window
-	  (encode-define-window state
-				(or (find-common-window code-point next-code-point)
-				    (codepoint-to-window-offset code-point))
-				write-func +SD0+ +SDX+)
-	  (encode-unit* state code-point next-code-point write-func))
+	 ((multiple-value-bind (offset index) ; define window
+	      (use-define-window-p state code-point)
+	    (when offset
+	      (encode-define-window state offset index write-func +SD0+ +SDX+)
+	      (encode-unit* state code-point next-code-point write-func))))
 	 ((or (standalone-character-p code-point)
 	      ;; not both suitable for unicode-mode => next char can be encoded smally (1byte).
 	      (encoded-1byte-p state next-code-point)
@@ -550,12 +553,12 @@
 	       (scsu-change-to-window state dwindow)
 	       (funcall write-func (+ +UC0+ dwindow))
 	       (encode-unit* state code-point next-code-point write-func)))))
-	((use-define-window-p state code-point next-code-point) ; define window
-	 (setf (scsu-state-mode state) :single-byte-mode)
-	 (encode-define-window state (or (find-common-window code-point next-code-point)
-					 (codepoint-to-window-offset code-point))
-			       write-func +UD0+ +UDX+)
-	 (encode-unit* state code-point next-code-point write-func))
+	((multiple-value-bind (offset index) ; define window	     
+	     (use-define-window-p state code-point next-code-point)
+	   (when offset
+	     (setf (scsu-state-mode state) :single-byte-mode)
+	     (encode-define-window state offset index write-func +UD0+ +UDX+)
+	     (encode-unit* state code-point next-code-point write-func))))
 	((> code-point #xFFFF)		; use surrogate pair
 	 (multiple-value-bind (high low)
 	     (encode-to-surrogate-pair code-point)

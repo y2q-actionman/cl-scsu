@@ -16,10 +16,9 @@
     :components
     ((:file "package")
      ;; (:file "simple-test")
-     (:file "util")
-     (:file "1_examples")
+     (:file "1_util")
      (:file "2_codepoints")
-     (:file "3_coverage")
+     (:file "3_examples")
      (:file "4_interface")
      (:file "main"))))
   :perform (asdf:test-op (o s)

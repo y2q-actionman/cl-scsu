@@ -105,7 +105,7 @@ Our Decompression: ~A~%Decompression from Expected: ~A~2%"
        #x15 #xFF))))
 ;;; This example uses SDX for U+10FFFF. cl-scsu don't do so because U+10FFFF is a non-character.
 
-(defun test-1-examples ()
+(defun test-3-examples ()
   (and (test-9.1)
        (test-9.2)
        (test-9.3)
