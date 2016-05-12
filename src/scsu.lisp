@@ -290,7 +290,20 @@
 
 (defun decode-unit (state read-func)
   (prog2 (scsu-trace-output "~&")
-      (decode-unit* state read-func)
+      (let ((code-point (decode-unit* state read-func)))
+	(declare (type unicode-code-point code-point))
+	(cond ((<= #xD800 code-point #xDBFF) ; high surrogate
+	       (let ((low (decode-unit* state read-func)))
+		 (declare (type (unsigned-byte 16) low))
+		 (unless (<= #xDC00 low #xDFFF)
+		   (error 'scsu-error
+			  :format-control "High surrogate appeared alone"))
+		 (decode-from-surrogate-pair code-point low)))
+	      ((<= #xDC00 code-point #xDFFF) ; low surrogate
+	       (error 'scsu-error
+		      :format-control "Low surrogate appeared alone"))
+	      (t
+	       code-point)))
     (scsu-trace-output "~%")))
 
 (defun decode-to-string (bytes
@@ -316,29 +329,12 @@
 				   (values string dst src state))))
 	      (let ((code-point (decode-unit state #'pick-byte)))
 		(declare (type unicode-code-point code-point))
-		;; TODO: cleanup this part
-		(cond ((<= #xD800 code-point #xDBFF) ; high surrogate
-		       (let ((low (decode-unit state #'pick-byte)))
-			 (declare (type (unsigned-byte 16) low))
-			 (unless (<= #xDC00 low #xDFFF)
-			   (error 'scsu-error
-				  :format-control "High surrogate appeared alone"))
-			 (cond ((> char-code-limit #xFFFF) ; For UTF-16 string implementation (i.e. Allegro CL)
-				(put-char (code-char code-point))
-				(put-char (code-char low)))
-			       (t
-				(put-char (code-char
-					   (decode-from-surrogate-pair code-point low)))))))
-		      ((<= #xDC00 code-point #xDFFF) ; low surrogate
-		       (error 'scsu-error
-			      :format-control "Low surrogate appeared alone"))
-		      ((>= code-point char-code-limit) ; for UTF-16 string implementation.
-		       (multiple-value-bind (high low)
-			   (encode-to-surrogate-pair code-point)
-			 (put-char (code-char high))
-			 (put-char (code-char low))))
-		      (t
-		       (put-char (code-char code-point)))))))
+		(if (>= code-point char-code-limit) ; For UTF-16 string implementation (i.e. Allegro CL)
+		    (multiple-value-bind (high low)
+			(encode-to-surrogate-pair code-point)
+		      (put-char (code-char high))
+		      (put-char (code-char low)))
+		    (put-char (code-char code-point))))))
       (values string dst-current src-current state))))
 
 (defun decode-unit-from-bytes (bytes &key (start 0) (end (length bytes))
@@ -520,8 +516,10 @@
 	      ;; not both suitable for unicode-mode => next char can be encoded smally (1byte).
 	      (encoded-1byte-p state next-code-point)
 	      (find-suitable-static-window next-code-point)
-	      #+()			; TODO
-	      (find-suitable-dynamic-window state next-code-point))
+	      ;; I don't check with FIND-SUITABLE-DYNAMIC-WINDOW,
+	      ;; because "SQU, <unicode>, SCn" sequence is same length
+	      ;; with "SCU, <unicode>, UCn" sequence.
+	      )
 	  ;; quote unicode.
 	  (funcall write-func +SQU+)
 	  (if (> code-point #xFFFF)
