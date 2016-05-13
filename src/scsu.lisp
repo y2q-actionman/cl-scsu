@@ -481,7 +481,6 @@
 		     (funcall write-func (+ +SC0+ dwindow))
 		     (encode-unit* state code-point next-code-point write-func))))))
 	 ;; 3byte or more
-	 ;; TODO: add test code for this part.
 	 ((multiple-value-bind (offset index) ; define window
 	      (use-define-window-p state code-point)
 	    (when offset

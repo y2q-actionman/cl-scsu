@@ -9,7 +9,7 @@
      for cp across codepoints
      if (>= cp char-code-limit)
      do (multiple-value-bind (high low)
-     	    (cl-scsu::encode-to-surrogate-pair cp) ; TODO: export?
+     	    (cl-scsu::encode-to-surrogate-pair cp)
      	  (vector-push-extend (code-char high) ret)
      	  (vector-push-extend (code-char low) ret))
      else

@@ -53,7 +53,7 @@
   :lookahead か配列。もう計算しちゃおう。
 
 
-- [ ] rearrange test
+- [X] rearrange test
   util, codepoints, examples, interface 
 
 * DONE 圧縮率
