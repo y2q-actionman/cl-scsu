@@ -12,7 +12,7 @@
    (timestamp-vector :initform nil	; see scsu-state-timestamp and initialize-timestamp
 		     :accessor scsu-state-timestamp-vector)
    (current-timestamp :initform 0 :accessor scsu-state-current-timestamp :type fixnum)
-   (fix-dynamic-window :initarg :fixed-window :initform *scsu-state-default-fix-dynamic-window*
+   (fix-dynamic-window :initarg :fix-dynamic-window :initform *scsu-state-default-fix-dynamic-window*
 		       :reader scsu-state-fix-dynamic-window :type boolean)
    ))
 
@@ -208,7 +208,7 @@
 	     (#.+SDX+			; Define Extended
 	      (scsu-trace-output "SDX ")
 	      (decode-define-window-extended state read-func)
-	      (decode-unit* state read-func))
+	      '+SDX)
 	     (#xC
 	      (error 'scsu-error
 		     :format-control "reserved byte ~A is used"
@@ -217,22 +217,24 @@
 	      (scsu-trace-output "SQU ")
 	      (let ((char (decode-quote-unicode read-func)))
 		(prog1 char
-		  (scsu-trace-output "[quote unicode ~X]" char))))
+		  (scsu-trace-output "[quote unicode ~X]" char)
+		  (when (<= #xD800 char #xDFFF)
+		    (scsu-trace-output ", " char)))))
 	     (#.+SCU+			; Change to Unicode
 	      (scsu-trace-output "SCU ")
 	      (setf (scsu-state-mode state) :unicode-mode)
-	      (decode-unit* state read-func))
+	      '+SCU+)
 	     ((#.+SC0+ #.+SC1+ #.+SC2+ #.+SC3+ #.+SC4+ #.+SC5+ #.+SC6+ #.+SC7+) ; Change to Window
 	      (let ((window (find-SCn-window byte)))
 		(scsu-trace-output "SC~D " window)
 		(scsu-change-to-window state window))
-	      (decode-unit* state read-func))
+	      '+SC0+)
 	     ((#.+SD0+ #.+SD1+ #.+SD2+ #.+SD3+ #.+SD4+ #.+SD5+ #.+SD6+ #.+SD7+) ; Define Window
 	      (let ((window (find-SDn-window byte)))
 		(scsu-trace-output "SD~D " window)
 		(scsu-define-window state window
 				    (lookup-window-offset-table (funcall read-func))))
-	      (decode-unit* state read-func))))
+	      '+SD0+)))
 	  ((<= byte #x7F)		  ; Basic Latin Block.
 	   (scsu-trace-output "[single-byte ASCII ~X]" byte)
 	   byte)
@@ -254,14 +256,14 @@
 	 (scsu-trace-output "UC~D " window)
 	 (scsu-change-to-window state window)
 	 (setf (scsu-state-mode state) :single-byte-mode))
-       (decode-unit* state read-func))
+       '+UC0+)
       ((#.+UD0+ #.+UD1+ #.+UD2+ #.+UD3+ #.+UD4+ #.+UD5+ #.+UD6+ #.+UD7+) ; Define Window
        (let ((window (find-UDn-window byte)))
 	 (scsu-trace-output "UD~D " window)
 	 (scsu-define-window state window
 			   (lookup-window-offset-table (funcall read-func)))
 	 (setf (scsu-state-mode state) :single-byte-mode))
-       (decode-unit* state read-func))
+       '+UD0+)
       (#.+UQU+				; Quote Unicode
        (scsu-trace-output "UQU ")
        (let ((char (decode-quote-unicode read-func)))
@@ -271,7 +273,7 @@
        (scsu-trace-output "UDX ")
        (decode-define-window-extended state read-func)
        (setf (scsu-state-mode state) :single-byte-mode)
-       (decode-unit* state read-func))
+       '+UDX+)
       (#xF2
        (error 'scsu-error
 	      :format-control "reserved byte ~A is used"
@@ -291,8 +293,9 @@
 (defun decode-unit (state read-func)
   (prog2 (scsu-trace-output "~&")
       (let ((code-point (decode-unit* state read-func)))
-	(declare (type unicode-code-point code-point))
-	(cond ((<= #xD800 code-point #xDBFF) ; high surrogate
+	(cond ((symbolp code-point)
+	       code-point)
+	      ((<= #xD800 code-point #xDBFF) ; high surrogate
 	       (let ((low (decode-unit* state read-func)))
 		 (declare (type (unsigned-byte 16) low))
 		 (unless (<= #xDC00 low #xDFFF)
@@ -328,29 +331,16 @@
 				 (return-from decode-to-string
 				   (values string dst src state))))
 	      (let ((code-point (decode-unit state #'pick-byte)))
-		(declare (type unicode-code-point code-point))
-		(if (>= code-point char-code-limit) ; For UTF-16 string implementation (i.e. Allegro CL)
-		    (multiple-value-bind (high low)
-			(encode-to-surrogate-pair code-point)
-		      (put-char (code-char high))
-		      (put-char (code-char low)))
-		    (put-char (code-char code-point))))))
+		(cond ((symbolp code-point)
+		       (progn))		; state transition only
+		      ((>= code-point char-code-limit) ; For UTF-16 string implementation (i.e. Allegro CL)
+		       (multiple-value-bind (high low)
+			   (encode-to-surrogate-pair code-point)
+			 (put-char (code-char high))
+			 (put-char (code-char low))))
+		      (t
+		       (put-char (code-char code-point)))))))
       (values string dst-current src-current state))))
-
-(defun decode-unit-from-bytes (bytes &key (start 0) (end (length bytes))
-				       (state (make-instance 'scsu-state)))
-  (let ((tmp-str (make-array 1 :element-type 'character)))
-    (declare (type simple-string tmp-str)
-	     (dynamic-extent tmp-str))
-    (let* ((ret-list (multiple-value-list 
-		      (decode-to-string bytes :start1 start :end1 end
-					:string tmp-str :start2 0 :end2 1
-					:state state)))
-	   (ret-len (second ret-list))
-	   (ret-char (if (>= ret-len 1) (schar tmp-str 0) nil)))
-      (declare (type list ret-list)
-	       (type fixnum ret-len))
-      (apply #'values ret-char (rest ret-list)))))
 
 
 ;;; Encode
@@ -448,7 +438,7 @@
 	     (funcall write-func hbyte)
 	     (funcall write-func lbyte))))))
 
-(defun encoded-1byte-p (state code-point &optional (window (scsu-state-active-window-index state)))
+(defun 1byte-encodable-p (state code-point &optional (window (scsu-state-active-window-index state)))
   (declare (type (or null unicode-code-point) code-point)
 	   (type window-index window))
   (or (null code-point)
@@ -497,7 +487,7 @@
 	  (locally (declare (type window-index dwindow))
 	    (let ((offset (lookup-dynamic-window state dwindow)))
 	      (declare (type unicode-code-point offset))
-	      (cond ((encoded-1byte-p state next-code-point) ; quote
+	      (cond ((1byte-encodable-p state next-code-point) ; quote
 		     (update-timestamp state dwindow)
 		     (funcall write-func (+ +SQ0+ dwindow))
 		     (funcall write-func (+ (- code-point offset) #x80)))
@@ -514,7 +504,7 @@
 	      (encode-unit* state code-point next-code-point write-func))))
 	 ((or (standalone-character-p code-point)
 	      ;; not both suitable for unicode-mode => next char can be encoded smally (1byte).
-	      (encoded-1byte-p state next-code-point)
+	      (1byte-encodable-p state next-code-point)
 	      (find-suitable-static-window next-code-point)
 	      ;; I don't check with FIND-SUITABLE-DYNAMIC-WINDOW,
 	      ;; because "SQU, <unicode>, SCn" sequence is same length
@@ -545,7 +535,7 @@
 	 (encode-unit* state code-point next-code-point write-func))
 	((let ((dwindow	(find-suitable-dynamic-window state code-point))) ; in dynamic window
 	   (when (and dwindow
-		      (encoded-1byte-p state next-code-point dwindow))
+		      (1byte-encodable-p state next-code-point dwindow))
 	     (locally (declare (type window-index dwindow))
 	       (setf (scsu-state-mode state) :single-byte-mode)
 	       (scsu-change-to-window state dwindow)
@@ -640,8 +630,9 @@
 						:element-type '(unsigned-byte 8)))
 			     (start2 0) (end2 (length bytes))
 			     (initial-priority :lookahead)
-			     (state-initargs nil)
-			     (state (apply 'make-instance 'scsu-state state-initargs)))
+			     (fix-dynamic-window *scsu-state-default-fix-dynamic-window*)
+			     (state (make-instance 'scsu-state
+						   :fix-dynamic-window fix-dynamic-window)))
   (declare (type string string)
 	   (type (array (unsigned-byte 8) *) bytes)	   
 	   (type fixnum start1 end1 start2 end2))
@@ -660,24 +651,39 @@
 	      (encode-unit state #'pick-char #'put-byte)))
       (values bytes dst-current end1 state))))
 
-;; The required length is out of BMP case.
-;; - SQU, <high surrogate 1>, <high surrogate 2>, SQU, <low surrogate 1>, <low surrogate 2>
-;; - SDX, <high>, <low>, <byte>
-(defconstant +encode-unit-default-bytes-length+ 6)
-
-(defun encode-unit-to-bytes (char
-			     &key (bytes (make-array +encode-unit-default-bytes-length+
-						     :fill-pointer 0
-						     :element-type '(unsigned-byte 8)))
-			       (start 0)
-			       (end (length bytes))
-			       (state (make-instance 'scsu-state)))
-  (declare (type character char)
-	   (type fixnum start end)
-	   (type (array (unsigned-byte 8) *) bytes))
-  (let ((tmp-string (make-array 1 :element-type 'character)))
-    (declare (type simple-string tmp-string)
-	     (dynamic-extent tmp-string))
-    (setf (schar tmp-string 0) char)
-    (encode-from-string tmp-string :start1 0 :end1 1
-			:bytes bytes :start2 start :end2 end :state state)))
+(defun encode-reset-sequence (state
+			      &key (bytes (make-array (* 2 +window-count+) ; SDn * 8
+						      :fill-pointer 0
+						      :element-type '(unsigned-byte 8)))
+				(start 0) (end (length bytes)))
+  (declare (type (array (unsigned-byte 8) *) bytes)	   
+	   (type fixnum start end))
+  (with-buffer-accessor (:writer put-byte :current dst-current)
+      (bytes start end :element-type (unsigned-byte 8))
+    (with-scsu-error-handling
+	(state :dst dst-current
+	       :return (lambda (dst src)
+			 (declare (ignore dst src))
+			 (return-from encode-reset-sequence
+			   (values bytes 0 state))))
+      ;; change to default windows
+      (loop for w of-type fixnum downfrom (1- +window-count+) to 0
+	 as offset of-type unicode-code-point = (lookup-dynamic-window state w)
+	 as default-offset of-type unicode-code-point
+	   = (aref +default-positions-for-dynamically-positioned-windows+ w)
+	 when (/= offset default-offset)
+	 do (put-byte (+ w (ecase (scsu-state-mode state)
+			     (:single-byte-mode +SD0+)
+			     (:unicode-mode (setf (scsu-state-mode state) :single-byte-mode)
+					    +UD0+))))
+	   (put-byte (nth-value 1 (codepoint-to-window-offset default-offset))))
+      ;; changes active window
+      (when (/= 0 (scsu-state-active-window-index state))
+	(scsu-change-to-window state 0)
+	(put-byte +SC0+))
+      ;; change to single-byte mode if required
+      (when (eq (scsu-state-mode state) :unicode-mode)
+	(put-byte (+ +UC0+ (scsu-state-active-window-index state))))
+      ;; clean object
+      (scsu-state-reset state))
+    (values bytes dst-current state)))

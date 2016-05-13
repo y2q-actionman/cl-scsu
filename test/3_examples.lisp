@@ -16,7 +16,7 @@
      do (vector-push-extend (code-char cp) ret)
      finally (return ret)))
 
-(defun test-examples (codepoints expected-compression)
+(defun test-example* (codepoints expected-compression)
   (let* ((string (make-string-from-codepoints codepoints))
 	 (expected-decompression (decode-to-string expected-compression)))
     (assert-equal string expected-decompression)
@@ -41,17 +41,17 @@ Our Decompression: ~A~%Decompression from Expected: ~A~2%"
   
 
 (defun test-9.1 () 			; German
-  (test-examples
+  (test-example*
    #(#x00D6 #x006C #x0020 #x0066 #x006C #x0069 #x0065 #x00DF #x0074)
    #(#xD6 #x6C #x20 #x66 #x6C #x69 #x65 #xDF #x74)))
 
 (defun test-9.2 () 			; Russian
-  (test-examples
+  (test-example*
    #(#x041C #x043E #x0441 #x043A #x0432 #x0430)
    #(#x12 #x9C #xBE #xC1 #xBA #xB2 #xB0)))
 
 (defun test-9.3 () 			; Japanese
-  (test-examples
+  (test-example*
    #(#x3000 #x266A #x30EA #x30F3 #x30B4 #x53EF #x611B ;　♪リンゴ可愛
      #x3044 #x3084 #x53EF #x611B #x3044 #x3084 #x30EA #x30F3 ;いや可愛いやリン
      #x30B4 #x3002 #x534A #x4E16 #x7D00 #x3082 #x524D #x306B ;ゴ。半世紀も前に
@@ -96,7 +96,7 @@ Our Decompression: ~A~%Decompression from Expected: ~A~2%"
 	   #xDBFF #xDFFF)))
     (assert-equalp (make-string-from-codepoints utf-32-seq)
 		   (make-string-from-codepoints utf-16-seq))
-    (test-examples
+    (test-example*
      (if (> char-code-limit #xFFFF) utf-16-seq  utf-32-seq)
      #(#x41 #xDF #x12 #x81 #x03 #x5F #x10 #xDF #x1B #x03 #xDF #x1C #x88 #x80
        #x0B #xBF #xFF #xFF
@@ -105,7 +105,7 @@ Our Decompression: ~A~%Decompression from Expected: ~A~2%"
        #x15 #xFF))))
 ;;; This example uses SDX for U+10FFFF. cl-scsu don't do so because U+10FFFF is a non-character.
 
-(defun test-3-examples ()
+(defun test-examples ()
   (and (test-9.1)
        (test-9.2)
        (test-9.3)

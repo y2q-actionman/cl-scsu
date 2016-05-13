@@ -47,7 +47,7 @@
 		  (assert (and (= high h) (= low l)))))))
   t)
 
-(defun test-1-util ()
+(defun test-util ()
   (and (test-window-offset-table)
        (test-extended-window-tag)
        (test-surrogate-pair)

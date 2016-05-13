@@ -31,7 +31,7 @@
 	  (vector-push (code-char low) str))
      finally (return (test-codepoints* str))))
 
-(defun test-2-codepoints ()
+(defun test-codepoints ()
   (and (test-bmp-codepoints)
        (if (> char-code-limit #xFFFF)
 	   (test-smp-codepoints)

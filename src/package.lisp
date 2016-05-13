@@ -5,13 +5,13 @@
   (:export
    ;; scsu-state object
    #:*scsu-state-default-fix-dynamic-window*
+   #:*scsu-state-trace*
    #:scsu-state
    #:scsu-state-reset
    ;; errors
    #:scsu-error
-   ;; main encoder
+   ;; main entry point
    #:decode-to-string
-   #:decode-unit-from-bytes
    #:encode-from-string
-   #:encode-unit-to-bytes
+   #:encode-reset-sequence
    ))
