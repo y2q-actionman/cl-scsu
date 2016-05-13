@@ -10,6 +10,7 @@
    #:scsu-state-reset
    ;; errors
    #:scsu-error
+   #:restore-state
    ;; main entry point
    #:decode-to-string
    #:encode-from-string

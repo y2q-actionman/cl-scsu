@@ -169,16 +169,138 @@
 
 
 ;;; Restart
-;; -- use simple-test
 
+(defmacro with-restoring-state-test (&body body)
+  (alexandria:with-gensyms (raised?)
+    `(let ((,raised? nil))
+       (multiple-value-prog1 
+	   (handler-bind
+	       ((scsu-error (lambda (c)
+			      (setf ,raised? c)
+			      (invoke-restart 'restore-state))))
+	     (progn ,@body))
+	 (assert ,raised?)))))
 
+(defun test-write-exhaust ()
+  (let ((src-string "0123456")
+	(tmp-bytes (make-array 10 :element-type '(unsigned-byte 8)))
+	(dst-string (make-array 10 :element-type 'character)))
+    (declare (type (simple-array (unsigned-byte 8) *) tmp-bytes)
+	     (type simple-string dst-string)
+	     (dynamic-extent tmp-bytes dst-string))
+    (multiple-value-bind (_ bytes-used src-used)
+	(with-restoring-state-test
+	  (encode-from-string src-string :bytes tmp-bytes :end2 5))
+      (declare (ignore _))
+      (assert (= src-used 5))
+      (assert (= bytes-used 5)))
+    (multiple-value-bind (_ dst-used bytes-used-2)
+	(with-restoring-state-test
+	  (decode-to-string tmp-bytes :end1 5 :string dst-string :end2 4))
+      (declare (ignore _))
+      (assert (= bytes-used-2 4))
+      (assert (= dst-used 4)))
+    (assert (string= src-string dst-string :end1 4 :end2 4)))
+  t)
+    
+(defun test-bad-surrogate ()
+  (let ((src-string (make-array 2 :element-type 'character)))
+    (declare (type simple-string src-string)
+	     (dynamic-extent src-string))
+    (setf (schar src-string 0) #\a)
+    (flet ((test-encode (bad-code)
+	     (setf (schar src-string 1) (code-char bad-code))
+	     (multiple-value-bind (bytes bytes-len src-used)
+		 (with-restoring-state-test (encode-from-string src-string))
+	       (assert (= (aref bytes 0) (char-code #\a)))
+	       (assert (= bytes-len 1))
+	       (assert (= src-used 1)))))
+      (test-encode #xD800)
+      (test-encode #xDFFF)))
+  (let ((src-bytes (make-array 4 :element-type '(unsigned-byte 8))))
+    (declare (type (simple-array (unsigned-byte 8) (*)) src-bytes)
+	     (dynamic-extent src-bytes))
+    (setf (aref src-bytes 0) (char-code #\a))
+    (setf (aref src-bytes 1) cl-scsu::+SQU+)
+    (flet ((test-decode (bad-code)
+	     (setf (aref src-bytes 2) (ldb (byte 8 8) bad-code))
+	     (setf (aref src-bytes 3) (ldb (byte 8 0) bad-code))
+	     (multiple-value-bind (string string-len bytes-used)
+		 (with-restoring-state-test (decode-to-string src-bytes))
+	       (assert (= string-len 1))
+	       (assert (char= (char string 0) #\a))
+	       (assert (= bytes-used 1)))))
+      (test-decode #xD800)
+      (test-decode #xDFFF)))
+  t)
+    
+(defun test-decode-bad-tag ()
+  (let ((src-bytes (make-array 16 :element-type '(unsigned-byte 8))))
+    (declare (type (simple-array (unsigned-byte 8) (*)) src-bytes)
+	     (dynamic-extent src-bytes))
+    (setf (aref src-bytes 0) (char-code #\a))
+    (setf (aref src-bytes 1) cl-scsu::+SC1+)
+    (flet ((test-tag (bad-tag args)
+	     (setf (aref src-bytes 2) bad-tag)
+	     (loop for i from 0 below (1- args)
+		do (setf (aref src-bytes (+ 3 i)) i)
+		  (multiple-value-bind (string string-len bytes-used)
+		      (with-restoring-state-test (decode-to-string src-bytes :end1 (+ 3 i)))
+		    (assert (= string-len 1))
+		    (assert (char= (char string 0) #\a))
+		    (assert (= bytes-used 2))))))
+      ;; single-byte mode
+      (setf (aref src-bytes 1) cl-scsu::+SC1+)
+      (test-tag cl-scsu::+SQU+ 2)
+      (loop for tag from cl-scsu::+SQ0+ to cl-scsu::+SQ7+
+	 do (test-tag tag 1))
+      (loop for tag from cl-scsu::+SD0+ to cl-scsu::+SD7+
+	 do (test-tag tag 1))
+      (test-tag cl-scsu::+SDX+ 2)
+      ;; unicode mode
+      (setf (aref src-bytes 1) cl-scsu::+SCU+)
+      (test-tag cl-scsu::+UQU+ 2)
+      (loop for tag from cl-scsu::+UD0+ to cl-scsu::+UD7+
+	 do (test-tag tag 1))
+      (test-tag cl-scsu::+UDX+ 2)))
+  t)
+	
+(defun test-decode-reserved-bytes ()
+  (let ((src-bytes (make-array 4 :element-type '(unsigned-byte 8))))
+    (declare (type (simple-array (unsigned-byte 8) (*)) src-bytes)
+	     (dynamic-extent src-bytes))
+    (setf (aref src-bytes 0) (char-code #\a))
+    (flet ((test-bad-bytes (bytes good-bytes-len)
+	     (loop for i from 1
+		for b in bytes
+		do (setf (aref src-bytes i) b)
+		finally
+		  (multiple-value-bind (string string-len bytes-used)
+		      (with-restoring-state-test (decode-to-string src-bytes :end1 i))
+		    (assert (= string-len 1))
+		    (assert (char= (char string 0) #\a))
+		    (assert (= bytes-used (+ 1 good-bytes-len)))))))
+      ;; single-byte mode reserved byte
+      (test-bad-bytes '(#xC) 0)
+      ;; unicode mode reserved byte
+      (test-bad-bytes `(,cl-scsu::+SCU+ #xF2) 1)
+      ;; window offset table reserved byte
+      (test-bad-bytes `(,cl-scsu::+SD0+ #x0) 0)
+      (test-bad-bytes `(,cl-scsu::+SD0+ #xA8) 0)
+      (test-bad-bytes `(,cl-scsu::+SD0+ #xF8) 0)))
+  t)
+  
 ;;; Main
 (defun test-interface ()
-  (warn "restart test is under implementation")
   (and (test-buffer-args)
        (test-ignored-write-buffer-args)
        (test-range-args)
        (test-initial-priority-arg)
        (test-fixed-mode-arg)
        (test-continuous-encoding)
+       
+       (test-write-exhaust)
+       (test-bad-surrogate)
+       (test-decode-bad-tag)
+       (test-decode-reserved-bytes)
        t))

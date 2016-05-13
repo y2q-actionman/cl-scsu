@@ -15,7 +15,7 @@
     :serial t    
     :components
     ((:file "package")
-     ;; (:file "simple-test")
+     (:file "util")
      (:file "1_util")
      (:file "2_codepoints")
      (:file "3_examples")

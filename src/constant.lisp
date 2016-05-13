@@ -7,6 +7,22 @@
 (deftype unicode-code-point ()
   `(integer 0 #x10FFFF))
 
+;;; Condition
+(define-condition scsu-error (error)
+  ((src-error-position :initform nil :accessor scsu-error-src-error-position)
+   (dst-error-position :initform nil :accessor scsu-error-dst-error-position)
+   (parental-condition :initarg parental-condition :initform nil
+		       :accessor scsu-error-parental-condition))
+  (:report (lambda (condition stream)
+	     (with-accessors ((original-format simple-condition-format-control)
+			      (original-args simple-condition-format-arguments)
+			      (src-pos scsu-error-src-error-position)
+			      (dst-pos scsu-error-dst-error-position))
+		 condition
+	       (format stream "~? [at SRC ~A, DST ~A] "
+		       original-format original-args src-pos dst-pos)))))
+
+
 ;;; Tags
 (defconstant +window-count+ 8 "number of static or dynamic windows")
 (declaim (type window-index +window-count+))
@@ -76,22 +92,25 @@
 ;;; Tables
 (defun lookup-window-offset-table (byte)
   (declare (type (unsigned-byte 8) byte))
-  (cond ((= byte #x0)
-	 (error "reserved"))		; reserved for internal use
-	((<= #x1 byte #x67)
-	 (* byte #x80))		   ; half-blocks from U+0080 to U+3380
-	((<= #x68 byte #xA7)
-	 (+ (* byte #x80) #xAC00)) ; half-blocks from U+E000 to U+FF80
-	((<= #xA8 byte #xF8)
-	 (error "reserved"))		; reserved for future use
-	(t (ecase byte
-	     (#xF9 #x00C0) ; Latin-1 letters + half of Latin Extended-A
-	     (#xFA #x0250) ; IPA Extensions
-	     (#xFB #x0370) ; Greek
-	     (#xFC #x0530) ; Armenian
-	     (#xFD #x3040) ; Hiragana
-	     (#xFE #x30A0) ; Katakana
-	     (#xFF #xFF60)))))		; Halfwidth Katakana
+  (flet ((raise-error-on-reserved-byte ()
+	   (error 'scsu-error :format-control "reserved offset-table index ~X was used"
+		  :format-arguments (list byte))))
+    (cond ((= byte #x0)
+	   (raise-error-on-reserved-byte)) ; reserved for internal use
+	  ((<= #x1 byte #x67)
+	   (* byte #x80))	   ; half-blocks from U+0080 to U+3380
+	  ((<= #x68 byte #xA7)
+	   (+ (* byte #x80) #xAC00)) ; half-blocks from U+E000 to U+FF80
+	  ((<= #xA8 byte #xF8)
+	   (raise-error-on-reserved-byte)) ; reserved for future use
+	  (t (ecase byte
+	       (#xF9 #x00C0) ; Latin-1 letters + half of Latin Extended-A
+	       (#xFA #x0250) ; IPA Extensions
+	       (#xFB #x0370) ; Greek
+	       (#xFC #x0530) ; Armenian
+	       (#xFD #x3040) ; Hiragana
+	       (#xFE #x30A0) ; Katakana
+	       (#xFF #xFF60))))))	; Halfwidth Katakana
 
 (defun codepoint-to-window-offset (code-point)
   (declare (type unicode-code-point code-point))

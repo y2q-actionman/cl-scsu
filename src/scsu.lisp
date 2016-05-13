@@ -60,21 +60,6 @@
   (shared-initialize state t))
 
 
-;;; Condition
-(define-condition scsu-error (error)
-  ((src-error-position :accessor scsu-error-src-error-position)
-   (dst-error-position :accessor scsu-error-dst-error-position)
-   (parental-condition :initarg parental-condition :accessor scsu-error-parental-condition))
-  (:report (lambda (condition stream)
-	     (with-accessors ((original-format simple-condition-format-control)
-			      (original-args simple-condition-format-arguments)
-			      (src-pos scsu-error-src-error-position)
-			      (dst-pos scsu-error-dst-error-position))
-		 condition
-	       (format stream "~? [at SRC ~A, DST ~A] "
-		       original-format original-args src-pos dst-pos)))))
-
-
 ;;; Util
 (defmacro with-scsu-error-handling
     ((state &key src dst return) &body body)
