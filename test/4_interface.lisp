@@ -155,11 +155,9 @@
 	      (encode-reset-sequence state :bytes tmp-bytes :start encoded-pos2) ; reset state
 	    (assert (eq _bytes tmp-bytes))
 	    (assert (eq _state state))
-	    (multiple-value-bind (_bytes encoded-pos4 __ _state)
-		(encode-from-string src-string :bytes tmp-bytes :start2 encoded-pos3 :state state) ; use the resetted state
-	      (declare (ignore __))
+	    (multiple-value-bind (_bytes encoded-pos4)
+		(encode-from-string src-string :bytes tmp-bytes :start2 encoded-pos3) ; use a new state
 	      (assert (eq _bytes tmp-bytes))
-	      (assert (eq _state state))
 	      (setf bytes-end encoded-pos4)))))
       ;; decode
       (let ((ret-string (decode-to-string tmp-bytes :end1 bytes-end)))

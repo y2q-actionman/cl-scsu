@@ -677,13 +677,14 @@
 			     (:unicode-mode (setf (scsu-state-mode state) :single-byte-mode)
 					    +UD0+))))
 	   (put-byte (nth-value 1 (codepoint-to-window-offset default-offset))))
-      ;; changes active window
-      (when (/= 0 (scsu-state-active-window-index state))
-	(scsu-change-to-window state 0)
-	(put-byte +SC0+))
-      ;; change to single-byte mode if required
-      (when (eq (scsu-state-mode state) :unicode-mode)
-	(put-byte (+ +UC0+ (scsu-state-active-window-index state))))
+      ;; changes active window and mode if required
+      (cond ((eq (scsu-state-mode state) :unicode-mode)
+	     (setf (scsu-state-mode state) :single-byte-mode)	     
+	     (scsu-change-to-window state 0)
+	     (put-byte +UC0+))
+	    ((/= 0 (scsu-state-active-window-index state))
+	     (scsu-change-to-window state 0)
+	     (put-byte +SC0+)))
       ;; clean object
       (scsu-state-reset state))
     (values bytes dst-current state)))
