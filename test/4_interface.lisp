@@ -31,13 +31,12 @@
 
 ;;; Buffer arguments
 
-(defun test-buffer-args ()
+(defun test-buffer-args* (make-array-args)
   (let ((src-string (make-test-string))
-	(dst-string (make-array 20 :element-type 'character))
-	(tmp-bytes (make-array 30 :element-type '(unsigned-byte 8))))
-    (declare (type string src-string)
-	     (type simple-string dst-string)
-	     (type (simple-array (unsigned-byte 8) (*)) tmp-bytes)
+	(dst-string (apply #'make-array 20 :element-type 'character make-array-args))
+	(tmp-bytes (apply #'make-array 30 :element-type '(unsigned-byte 8) make-array-args)))
+    (declare (type string src-string dst-string)
+	     (type (array (unsigned-byte 8) (*)) tmp-bytes)
 	     (dynamic-extent dst-string tmp-bytes))
     (fill tmp-bytes -1)
     (fill dst-string #\rubout)
@@ -56,6 +55,12 @@
 	(assert (eq state ret-state))
 	(assert (string= src-string dst-string :end2 decoded-len)))))
   t)
+
+(defun test-buffer-args ()
+  (and
+   (test-buffer-args* '())
+   (test-buffer-args* '(:fill-pointer 0	:adjustable nil))
+   t))
 
 (defun test-ignored-write-buffer-args ()
   (let* ((str (make-test-string))
