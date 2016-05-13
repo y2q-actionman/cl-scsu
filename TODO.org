@@ -14,7 +14,7 @@
   とりあえず、 fixed window フラグを state に入れ、 encode 内部で見るように。
 
 
-- [ ] 必要な上位interface
+- [X] 必要な上位interface
   {encode,decode}-{string,utf8-vector,utf16-vector,utf32-vector}
   state省略はこの層の機能かな
 
@@ -22,6 +22,7 @@
   しかし、テストを書くには、 Unicode 配列がそこそこ便利そう。
 
   => encode/decode UTF-32 が必要。 define extended を活用するため。
+  => 自動変換できるので不要
 
 - [ ] character と code-point を双方食えるように？
 
@@ -46,16 +47,16 @@
 - [ ] stream からの使用??
   string にしてから変換すればよいか。
 
-- [ ] char-code-limit が小さい環境での surrogate ほどいてから encode, しないと define extended できない
+- [X] char-code-limit が小さい環境での surrogate ほどいてから encode, しないと define extended できない
 
-- [ ] :initial-priority 引数
+- [X] :initial-priority 引数
   :lookahead か配列。もう計算しちゃおう。
 
 
 - [ ] rearrange test
   util, codepoints, examples, interface 
 
-* TODO 圧縮率
+* DONE 圧縮率
 
 Sdnを使う方が小さい
 Decode utf16 mode？ サロゲートを戻さない
