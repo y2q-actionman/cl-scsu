@@ -9,7 +9,7 @@
   :description "An implementation of 'Standard Compression Scheme for Unicode'."
   :license "MIT"
   :author "YOKOTA Yuki <y2q.actionman@gmail.com>"
-  :depends-on (:alexandria)  ; :babel :flexi-stream
+  :depends-on (:alexandria)
   :components
   ((:module "src"
     :serial t
