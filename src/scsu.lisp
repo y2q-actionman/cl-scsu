@@ -460,12 +460,11 @@
 		     (funcall write-func (+ +SC0+ dwindow))
 		     (encode-unit* state code-point next-code-point write-func))))))
 	 ;; 3byte or more
-	 ((let ((offsets (use-define-window-p state code-point))) ; define window
-	    (when offsets
-	      (let ((offset (first offsets)))
-		(encode-define-window state offset (window-offset-to-table-index offset)
-				      write-func +SD0+ +SDX+)
-		(encode-unit* state code-point next-code-point write-func)))))
+	 ((alexandria:when-let* ((offsets (use-define-window-p state code-point)) ; define window
+				 (offset1 (first offsets)))
+	    (encode-define-window state offset1 (window-offset-to-table-index offset1)
+				  write-func +SD0+ +SDX+)
+	    (encode-unit* state code-point next-code-point write-func)))
 	 ((or (standalone-character-p code-point)
 	      ;; not both suitable for unicode-mode => next char can be encoded smally (1byte).
 	      (1byte-encodable-p state next-code-point)
@@ -497,21 +496,19 @@
 	 (setf (scsu-state-mode state) :single-byte-mode)
 	 (funcall write-func (+ +UC0+ (scsu-state-active-window-index state)))
 	 (encode-unit* state code-point next-code-point write-func))
-	((let ((dwindow	(find-suitable-dynamic-window state code-point))) ; in dynamic window
-	   (when (and dwindow
-		      (1byte-encodable-p state next-code-point dwindow)) ; TODO: when-let
-	     (locally (declare (type window-index dwindow))
-	       (setf (scsu-state-mode state) :single-byte-mode)
-	       (scsu-change-to-window state dwindow)
-	       (funcall write-func (+ +UC0+ dwindow))
-	       (encode-unit* state code-point next-code-point write-func)))))
-	((let ((offsets (use-define-window-p state code-point next-code-point))) ; define window	     
-	   (when offsets
-	     (let ((offset (first offsets)))
-	       (setf (scsu-state-mode state) :single-byte-mode)
-	       (encode-define-window state offset (window-offset-to-table-index offset)
-				     write-func +UD0+ +UDX+)
-	       (encode-unit* state code-point next-code-point write-func)))))
+	((alexandria:when-let* ((dwindow (find-suitable-dynamic-window state code-point)) ; in dynamic window
+				(_ (1byte-encodable-p state next-code-point dwindow)))
+	   (locally (declare (type window-index dwindow))
+	     (setf (scsu-state-mode state) :single-byte-mode)
+	     (scsu-change-to-window state dwindow)
+	     (funcall write-func (+ +UC0+ dwindow))
+	     (encode-unit* state code-point next-code-point write-func))))
+	((alexandria:when-let* ((offsets (use-define-window-p state code-point next-code-point)) ; define window
+				(offset1 (first offsets)))
+	   (setf (scsu-state-mode state) :single-byte-mode)
+	   (encode-define-window state offset1 (window-offset-to-table-index offset1)
+				 write-func +UD0+ +UDX+)
+	   (encode-unit* state code-point next-code-point write-func)))
 	((> code-point #xFFFF)		; use surrogate pair
 	 (multiple-value-bind (high low)
 	     (encode-to-surrogate-pair code-point)
