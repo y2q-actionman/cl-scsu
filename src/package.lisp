@@ -5,7 +5,6 @@
   (:export
    ;; scsu-state object
    #:*scsu-state-default-fix-dynamic-window*
-   #:*scsu-state-trace*
    #:scsu-state
    #:scsu-state-reset
    ;; errors

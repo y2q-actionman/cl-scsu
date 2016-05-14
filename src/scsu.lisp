@@ -1,8 +1,10 @@
 (in-package :cl-scsu)
 
+(defvar *scsu-state-trace* nil
+  "If set to T, outputs tag or character informations seen by the decoder to *trace-output*")
+
 ;;; State
 (defvar *scsu-state-default-fix-dynamic-window* nil)
-(defvar *scsu-state-trace* nil)
 
 (defclass scsu-state ()
   ((mode :initform :single-byte-mode :accessor scsu-state-mode)
@@ -202,9 +204,7 @@
 	      (scsu-trace-output "SQU ")
 	      (let ((char (decode-quote-unicode read-func)))
 		(prog1 char
-		  (scsu-trace-output "[quote unicode ~X]" char)
-		  (when (<= #xD800 char #xDFFF)
-		    (scsu-trace-output ", " char)))))
+		  (scsu-trace-output "[quote unicode ~X]" char))))
 	     (#.+SCU+			; Change to Unicode
 	      (scsu-trace-output "SCU ")
 	      (setf (scsu-state-mode state) :unicode-mode)
@@ -276,23 +276,24 @@
     (:unicode-mode (decode-unit*/unicode-mode state read-func))))
 
 (defun decode-unit (state read-func)
-  (prog2 (scsu-trace-output "~&")
-      (let ((code-point (decode-unit* state read-func)))
-	(cond ((symbolp code-point)
-	       code-point)
-	      ((<= #xD800 code-point #xDBFF) ; high surrogate
-	       (let ((low (decode-unit* state read-func)))
-		 (declare (type (unsigned-byte 16) low))
-		 (unless (<= #xDC00 low #xDFFF)
-		   (error 'scsu-error
-			  :format-control "High surrogate appeared alone"))
-		 (decode-from-surrogate-pair code-point low)))
-	      ((<= #xDC00 code-point #xDFFF) ; low surrogate
+  (let ((code-point (decode-unit* state read-func)))
+    (cond ((symbolp code-point)
+	   code-point)
+	  ((<= #xD800 code-point #xDBFF) ; high surrogate
+	   (scsu-trace-output " ")
+	   (let ((low (decode-unit* state read-func)))
+	     (declare (type (unsigned-byte 16) low))
+	     (unless (<= #xDC00 low #xDFFF)
 	       (error 'scsu-error
-		      :format-control "Low surrogate appeared alone"))
-	      (t
-	       code-point)))
-    (scsu-trace-output "~%")))
+		      :format-control "High surrogate appeared alone"))
+	     (prog1 (decode-from-surrogate-pair code-point low)
+	       (scsu-trace-output "~&"))))
+	  ((<= #xDC00 code-point #xDFFF) ; low surrogate
+	   (error 'scsu-error
+		  :format-control "Low surrogate appeared alone"))
+	  (t
+	   (prog1 code-point
+	     (scsu-trace-output "~%"))))))
 
 (defun decode-to-string (bytes
 			 &key (start1 0) (end1 (length bytes))
@@ -647,9 +648,9 @@
     (with-scsu-error-handling
 	(state :dst dst-current
 	       :return (lambda (dst src)
-			 (declare (ignore dst src))
+			 (declare (ignore src))
 			 (return-from encode-reset-sequence
-			   (values bytes 0 state))))
+			   (values bytes dst state))))
       ;; change to default windows
       (loop for w of-type fixnum downfrom (1- +window-count+) to 0
 	 as offset of-type unicode-code-point = (lookup-dynamic-window state w)
