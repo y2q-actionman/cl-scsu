@@ -17,14 +17,14 @@
 (defun test-smp-codepoints ()
   (loop with str = (make-array '(#x100000) :element-type 'character
 			       :fill-pointer 0)
-     for i fixnum from #x10000 to #x10FFFF
+     for i fixnum from #x10000 to #x10FFFF by 3
      do (vector-push (code-char i) str)
      finally (return (test-codepoints* str))))
 
 (defun test-smp-codepoints-as-surrogate ()
   (loop with str = (make-array '(#x200000) :element-type 'character
 			       :fill-pointer 0)
-     for i fixnum from #x10000 to #x10FFFF
+     for i fixnum from #x10000 to #x10FFFF by 3
      do (multiple-value-bind (high low)
 	    (cl-scsu::encode-to-surrogate-pair i)
 	  (vector-push (code-char high) str)

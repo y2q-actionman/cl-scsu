@@ -2,19 +2,16 @@
 
 (defun test-window-offset-table ()
   (loop for i of-type (unsigned-byte 8) from 0 below #xFF
-     do (multiple-value-bind (offset index)
-	    (ignore-errors (cl-scsu::lookup-window-offset-table i))
-	  (when (and offset index)
-	    (assert (= (cl-scsu::codepoint-to-window-offset offset) i)))))
-  (loop for offset of-type fixnum from 0 below #x20000 by #x20
-     do (multiple-value-bind (offset index)
-	    (cl-scsu::codepoint-to-window-offset offset)
-	  (cond ((and offset index)
-		 (assert (= (cl-scsu::lookup-window-offset-table index) offset)))
-		((and offset (null index))
-		 (assert (>= offset #x10000)))
-		(t
-		 t))))
+     as offset = (ignore-errors (cl-scsu::lookup-window-offset-table i))
+     when offset
+     do (assert (= (cl-scsu::window-offset-to-table-index offset) i)))
+  (loop for cp of-type fixnum from 0 below #x20000 by #x20
+     as candidates = (cl-scsu::list-offset-candidates cp)
+     do (loop for offset in candidates
+	   when (>= offset #x10000)
+	   do (assert (null (cl-scsu::window-offset-to-table-index offset)))
+	   else
+	   do (assert (cl-scsu::window-offset-to-table-index offset))))
   t)
 
 (defun test-extended-window-tag ()

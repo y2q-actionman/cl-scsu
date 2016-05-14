@@ -112,33 +112,47 @@
 	       (#xFE #x30A0) ; Katakana
 	       (#xFF #xFF60))))))	; Halfwidth Katakana
 
-(defun codepoint-to-window-offset (code-point)
+(defun window-offset-to-table-index (offset)
+  (declare (type unicode-code-point offset))
+  (case offset
+    (#x00C0 #xF9)	  ; Latin-1 letters + half of Latin Extended-A
+    (#x0250 #xFA)	  ; IPA Extensions
+    (#x0370 #xFB)	  ; Greek
+    (#x0530 #xFC)	  ; Armenian
+    (#x3040 #xFD)	  ; Hiragana
+    (#x30A0 #xFE)	  ; Katakana
+    (#xFF60 #xFF)	  ; Halfwidth Katakana
+    (t (cond ((<= #x0080 offset #x3380)	; half-blocks from U+0080 to U+3380
+	      (floor offset #x80))
+	     ((<= #xE000 offset #xFF80) ; half-blocks from U+E000 to U+FF80
+	      (floor (- offset #xAC00) #x80))
+	     (t
+	      nil)))))
+
+(defun list-offset-candidates (code-point)
   (declare (type unicode-code-point code-point))
-  (cond
-    ((<= #x00C0 code-point (+ #x00C0 #x7F)) ; Latin-1 letters + half of Latin Extended-A
-     (values #x00C0 #xF9))
-    ((<= #x0250 code-point (+ #x0250 #x7F)) ; IPA Extensions
-     (values #x0250 #xFA))
-    ((<= #x0370 code-point (+ #x0370 #x7F)) ; Greek
-     (values #x0370 #xFB))
-    ((<= #x0530 code-point (+ #x0530 #x7F)) ; Armenian
-     (values #x0530 #xFC))
-    ((<= #x3040 code-point (+ #x3040 #x7F)) ; Hiragana
-     (values #x3040 #xFD))
-    ((<= #x30A0 code-point (+ #x30A0 #x7F)) ; Katakana
-     (values #x30A0 #xFE))
-    ((<= #xFF60 code-point (+ #xFF60 #x7F)) ; Halfwidth Katakana
-     (values #xFF60 #xFF))
-    ((<= #x0080 code-point (+ #x3380 #x7F)) ; half-blocks from U+0080 to U+3380
-     (values (logandc2 code-point #x7F)
-	     (floor code-point #x80)))
-    ((<= #xE000 code-point (+ #xFF80 #x7F)) ; half-blocks from U+E000 to U+FF80
-     (values (logandc2 code-point #x7F)
-	     (floor (- code-point #xAC00) #x80)))
-    ((<= #x10000 code-point) 		; SMP
-     (values (logandc2 code-point #x7F) nil))
-    (t
-     (values nil nil))))
+  (let ((ret nil))
+    ;; special offsets
+    (cond ((<= #x00C0 code-point (+ #x00C0 #x7F)) ; Latin-1 letters + half of Latin Extended-A
+	   (push #x00C0 ret))
+	  ((<= #x0250 code-point (+ #x0250 #x7F)) ; IPA Extensions
+	   (push #x0250 ret))
+	  ((<= #x0370 code-point (+ #x0370 #x7F)) ; Greek
+	   (push #x0370 ret))
+	  ((<= #x0530 code-point (+ #x0530 #x7F)) ; Armenian
+	   (push #x0530 ret))
+	  ((<= #x3040 code-point (+ #x3040 #x7F)) ; Hiragana
+	   (push #x3040 ret))
+	  ((<= #x30A0 code-point (+ #x30A0 #x7F)) ; Katakana
+	   (push #x30A0 ret))
+	  ((<= #xFF60 code-point (+ #xFF60 #x7F)) ; Halfwidth Katakana
+	   (push #xFF60 ret)))
+    ;; half blocks
+    (when (or (<= #x0080 code-point (+ #x3380 #x7F)) ; half-blocks from U+0080 to U+3380
+	      (<= #xE000 code-point (+ #xFF80 #x7F)) ; half-blocks from U+E000 to U+FF80
+	      (<= #x10000 code-point))		     ; SMP
+      (push (logandc2 code-point #x7F) ret))
+    (nreverse ret)))
 
 
 (alexandria:define-constant +static-windows+
