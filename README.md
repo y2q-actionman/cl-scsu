@@ -34,7 +34,7 @@ For running tests, do below additionally.
 
 # Examples
 
-Makes a test string, estimated 38 bytes long.
+Makes a test string, estimated 38 bytes long by counting Japanese characters as 2 bytes.
 
 ```
 CL-USER> (defvar *test-string* "abcde あいうえお アイウエオ 阿伊宇江於")
