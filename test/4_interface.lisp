@@ -46,7 +46,7 @@
       (assert (eq ret-bytes tmp-bytes))
       (assert (eq encoder-used-len (length src-string)))
       ;; decode
-      (scsu-state-reset state)		; reuse state object
+      (encode-reset-sequence state)	; reuse state object
       (multiple-value-bind (ret-string decoded-len decoder-used-len ret-state)
 	  (decode-to-string tmp-bytes :end1 encoded-len :string dst-string
 			    :state state)
@@ -160,6 +160,16 @@
 			       :start2 (* i src-string-len) :end2 (* (1+ i) src-string-len)))))))
   t)
 
+(defun test-empty-reset ()
+  (assert (= 0 (length (encode-reset-sequence (make-instance 'scsu-state)))))
+  (multiple-value-bind (bytes len _ state)
+      (encode-from-string "a")
+    (declare (ignore _))
+    (assert (= (aref bytes 0) (char-code #\a)))
+    (assert (= len 1))
+    (assert (= 0 (length (encode-reset-sequence state)))))
+  t)
+  
 ;; TODO: test (encode-reset-sequence <initial-state>) == 0 bytes.
 
 
@@ -292,6 +302,7 @@
        (test-range-args)
        (test-initial-priority-arg)
        (test-continuous-encoding)
+       (test-empty-reset)
        
        (test-write-exhaust)
        (test-bad-surrogate)

@@ -5,7 +5,6 @@
   (:export
    ;; scsu-state object
    #:scsu-state
-   #:scsu-state-reset
    ;; errors
    #:scsu-error
    #:restore-state
