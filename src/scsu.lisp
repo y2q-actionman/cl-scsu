@@ -4,8 +4,6 @@
   "If set to T, outputs tag or character informations seen by the decoder to *trace-output*")
 
 ;;; State
-(defvar *scsu-state-default-fix-dynamic-window* nil)
-
 (defclass scsu-state ()
   ((mode :initform :single-byte-mode :accessor scsu-state-mode)
    (dynamic-window :initform nil	; see lookup-dynamic-window
@@ -14,8 +12,8 @@
    (timestamp-vector :initform nil	; see scsu-state-timestamp and initialize-timestamp
 		     :accessor scsu-state-timestamp-vector)
    (current-timestamp :initform 0 :accessor scsu-state-current-timestamp :type fixnum)
-   (fix-dynamic-window :initarg :fix-dynamic-window :initform *scsu-state-default-fix-dynamic-window*
-		       :reader scsu-state-fix-dynamic-window :type boolean)
+   (fix-dynamic-window :initarg :fix-dynamic-window :initform nil
+		       :accessor scsu-state-fix-dynamic-window :type boolean)
    ))
 
 (defmethod lookup-dynamic-window (state window)
@@ -566,6 +564,8 @@
      (setf (scsu-state-timestamp-vector state)
 	   (make-array +window-count+ :element-type 'fixnum :initial-element -1))))
   (cond
+    ((eq initial-priority :fixed)
+     (setf (scsu-state-fix-dynamic-window state) t))
     ((eq initial-priority :lookahead)
      (let ((priority-array (make-array '(8) :element-type 'fixnum :initial-element 0)))
        (declare (type (simple-array fixnum (8)) priority-array)
@@ -592,9 +592,7 @@
 						:element-type '(unsigned-byte 8)))
 			     (start2 0) (end2 (length bytes))
 			     (initial-priority :lookahead)
-			     (fix-dynamic-window *scsu-state-default-fix-dynamic-window*)
-			     (state (make-instance 'scsu-state
-						   :fix-dynamic-window fix-dynamic-window)))
+			     (state (make-instance 'scsu-state)))
   (declare (type string string)
 	   (type (array (unsigned-byte 8) *) bytes)	   
 	   (type fixnum start1 end1 start2 end2))

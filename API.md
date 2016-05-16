@@ -137,18 +137,16 @@ Returned values are following:
 - `initial-priority`
 
   SCSUの (初期 dynamic window)[http://unicode.org/reports/tr6/#Initial_Window] の優先順序を指定する。指定可能な値は以下の通り:
-  - `:lookahead` :: `string` 引数の内容を先読みして決定する。
+  - `:lookahead` (初期値) :: `string` 引数の内容を先読みして決定する。
+  - `:fixed` :: dynamic window を変更しない。
   - `:random` :: 乱数で適当に決める。
   - 数値配列 :: 渡した数列を初期 dynamic window の優先度として使用する。大きい値が優先される。
 
   Specifies how to determine the priority of (the initial dynamic window)[http://unicode.org/reports/tr6/#Initial_Window] of SCSU as following:
-  - `:lookahead` :: Determines by lookaheading `string` argument.
+  - `:lookahead` (default) :: Determines by lookaheading `string` argument.
+  - `:fixed` :: Don't change dynamic window.
   - `:random` :: determines randomly.
   - an interger array :: Uses the array as a priority. Bigger is prior.
-
-- `fix-dynamic-window`
-
-  (stub)
 
 - `state`
 

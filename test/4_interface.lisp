@@ -119,20 +119,8 @@
   (encode-decode :initial-priority :lookahead)
   (encode-decode :initial-priority :random)
   (encode-decode :initial-priority #(1 2 3 4 5 6 7 8))
-  t)
-
-(defun test-fixed-mode-arg ()
-  (macrolet ((check-no-defwin (form)
-	       `(let ((decoder-state (nth-value 3 ,form)))
-		  (assert (null (cl-scsu::scsu-state-dynamic-window decoder-state))))))
-    (let ((*scsu-state-default-fix-dynamic-window* nil))
-      (encode-decode)
-      (check-no-defwin (encode-decode :fix-dynamic-window t))
-      (encode-decode :fix-dynamic-window nil))
-    (let ((*scsu-state-default-fix-dynamic-window* t))
-      (check-no-defwin (encode-decode))
-      (check-no-defwin (encode-decode :fix-dynamic-window t))
-      (encode-decode :fix-dynamic-window nil)))
+  (let ((decoder-state (nth-value 3 (encode-decode :initial-priority :fixed))))
+    (assert (null (cl-scsu::scsu-state-dynamic-window decoder-state))))
   t)
 
 (defun test-continuous-encoding ()
@@ -171,6 +159,8 @@
 	   do (assert (string= src-string ret-string
 			       :start2 (* i src-string-len) :end2 (* (1+ i) src-string-len)))))))
   t)
+
+;; TODO: test (encode-reset-sequence <initial-state>) == 0 bytes.
 
 
 ;;; Restart
@@ -301,7 +291,6 @@
        (test-ignored-write-buffer-args)
        (test-range-args)
        (test-initial-priority-arg)
-       (test-fixed-mode-arg)
        (test-continuous-encoding)
        
        (test-write-exhaust)

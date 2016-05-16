@@ -52,7 +52,7 @@ CL-USER> (cl-scsu:encode-from-string *test-string*)
 #<CL-SCSU:SCSU-STATE @ #x10002ed37c2>
 ```
 
-Decompressing the bytes restores the original string.
+To restore the original string, decompress the bytes.
 
 ```
 CL-USER> (cl-scsu:decode-to-string *)
