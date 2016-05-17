@@ -137,6 +137,10 @@
   (when *scsu-state-trace*
     (apply #'format *trace-output* format-control format-arguments)))
 
+(defun fill-pointer-if-exists (obj)
+  (and (arrayp obj)
+       (array-has-fill-pointer-p obj)
+       (fill-pointer obj)))
 
 ;;; Decoder
 (deftype read-func-type ()
@@ -299,7 +303,8 @@
 					       :element-type 'character
 					       :fill-pointer 0 :adjustable t))
 			   (start2 0) (end2 (length string))
-			   (state (make-instance 'scsu-state)))
+			   (state (make-instance 'scsu-state))
+			 &aux (string-fill-pointer-at-first (fill-pointer-if-exists string)))
   (declare (type (array (unsigned-byte 8) *) bytes)
 	   (type fixnum start1 end1 start2 end2)
 	   (type string string))
@@ -312,6 +317,8 @@
 	 do (with-scsu-error-handling
 		(state :src src-current :dst dst-current
 		       :return (lambda (dst src)
+				 (when string-fill-pointer-at-first
+				   (setf (fill-pointer string) (max dst string-fill-pointer-at-first)))
 				 (return-from decode-to-string
 				   (values string dst src state))))
 	      (let ((code-point (decode-unit state #'pick-byte)))
@@ -592,7 +599,8 @@
 						:element-type '(unsigned-byte 8)))
 			     (start2 0) (end2 (length bytes))
 			     (initial-priority :lookahead)
-			     (state (make-instance 'scsu-state)))
+			     (state (make-instance 'scsu-state))
+			   &aux (bytes-fill-pointer-at-first (fill-pointer-if-exists bytes)))
   (declare (type string string)
 	   (type (array (unsigned-byte 8) *) bytes)	   
 	   (type fixnum start1 end1 start2 end2))
@@ -606,6 +614,8 @@
 	 do (with-scsu-error-handling
 		(state :src src-current :dst dst-current
 		       :return (lambda (dst src)
+				 (when bytes-fill-pointer-at-first
+				   (setf (fill-pointer bytes) (max dst bytes-fill-pointer-at-first)))
 				 (return-from encode-from-string
 				   (values bytes dst src state))))
 	      (encode-unit state #'pick-char #'put-byte)))
@@ -615,7 +625,8 @@
 			      &key (bytes (make-array (* 2 +window-count+) ; SDn * 8
 						      :fill-pointer 0
 						      :element-type '(unsigned-byte 8)))
-				(start 0) (end (length bytes)))
+				(start 0) (end (length bytes))
+			      &aux (bytes-fill-pointer-at-first (fill-pointer-if-exists bytes)))
   (declare (type (array (unsigned-byte 8) *) bytes)	   
 	   (type fixnum start end))
   (with-buffer-accessor (:writer put-byte :current dst-current)
@@ -624,6 +635,8 @@
 	(state :dst dst-current
 	       :return (lambda (dst src)
 			 (declare (ignore src))
+			 (when bytes-fill-pointer-at-first
+			   (setf (fill-pointer bytes) (max dst bytes-fill-pointer-at-first)))
 			 (return-from encode-reset-sequence
 			   (values bytes dst state))))
       ;; change to default windows
