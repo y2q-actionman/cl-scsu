@@ -36,31 +36,30 @@ For running tests, do below additionally.
 
 Makes a test string, estimated 38 bytes long by counting Japanese characters as 2 bytes.
 
-```
+```lisp
 CL-USER> (defvar *test-string* "abcde あいうえお アイウエオ 阿伊宇江於")
 *TEST-STRING*
 ```
 
 Let's compress it. The result is only 30 bytes long.
 
-```
+```lisp
 CL-USER> (cl-scsu:encode-from-string *test-string*)
 #(97 98 99 100 101 32 21 130 132 134 136 138 32 226 228 230 232 234 32
-  15 150 63 79 10 91 135 108 95 101 188)
-30
-23
-#<CL-SCSU:SCSU-STATE @ #x10002ed37c2>
+  15 150 63 79 10 91 135 108 95 101 188) ; compressin result
+30                                       ; number of result bytes
+23                                       ; number of read characters
+#<CL-SCSU:SCSU-STATE @ #x10002ed37c2>    ; scsu state object
 ```
 
 To restore the original string, decompress the bytes.
 
-```
+```lisp
 CL-USER> (cl-scsu:decode-to-string *)
-"abcde あいうえお アイウエオ 阿伊宇江於"
-23
-30
-#<CL-SCSU:SCSU-STATE @ #x10002f469f2>
-CL-USER>
+"abcde あいうえお アイウエオ 阿伊宇江於" ; decompression result
+23                                       ; number of result characters
+30                                       ; number of read bytes
+#<CL-SCSU:SCSU-STATE @ #x10002f469f2>    ; scsu state object
 ```
 
 # API
