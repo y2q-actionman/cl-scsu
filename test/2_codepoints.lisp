@@ -35,6 +35,5 @@
   (and (test-bmp-codepoints)
        (if (> char-code-limit #xFFFF)
 	   (test-smp-codepoints)
-	   t)
-       (test-smp-codepoints-as-surrogate)
+	   (test-smp-codepoints-as-surrogate))
        t))

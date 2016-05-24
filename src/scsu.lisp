@@ -20,7 +20,7 @@
   (declare (type window-index window))
   (let ((dwindow (or (scsu-state-dynamic-window state)
 		     +default-positions-for-dynamically-positioned-windows+)))
-    (declare (type (array fixnum (8)) dwindow))
+    (declare (type (array integer (8)) dwindow))
     (aref dwindow window)))
 
 (defmethod (setf lookup-dynamic-window) (offset state window)
@@ -30,7 +30,7 @@
     (when (null dwindow)
       (setf dwindow (copy-seq +default-positions-for-dynamically-positioned-windows+)
 	    (scsu-state-dynamic-window state) dwindow))
-    (locally (declare (type (array fixnum (8)) dwindow))
+    (locally (declare (type (array integer (8)) dwindow))
       (setf (aref dwindow window) offset))))
 
 (defmethod scsu-state-active-window-offset (state)
@@ -73,8 +73,8 @@
 	    (,%t-v-contents (make-array +window-count+ :element-type 'fixnum))
 	    (,%c-t (slot-value ,%state 'current-timestamp))
 	    (,%src ,src) (,%dst ,dst))	; Holds a restartable state.
-       (declare (type (simple-array fixnum 8) ,%d-w-contents ,%t-v-contents)
-		(dynamic-extent ,%d-w-contents ,%t-v-contents))
+       (declare (type (simple-array fixnum (8)) ,%d-w-contents ,%t-v-contents)
+       		(dynamic-extent ,%d-w-contents ,%t-v-contents))
        (when ,%d-w
 	 (replace ,%d-w-contents ,%d-w))
        (when ,%t-v
@@ -103,7 +103,7 @@
   (alexandria:once-only (buffer start end)
     (alexandria:with-gensyms (%raise-scsu-error)
       `(locally (declare (type fixnum ,start ,end)
-			 (type (array ,element-type (*)) ,buffer))
+	   		 (type (array ,element-type (*)) ,buffer))
 	 (let ((,current ,start))
 	   (declare (type fixnum ,current))
 	   (labels
@@ -144,7 +144,7 @@
 
 ;;; Decoder
 (deftype read-func-type ()
-  '(function () (or null (unsigned-byte 8))))
+  '(function (&optional t) (or null (unsigned-byte 8))))
 
 (defun decode-quote-unicode (read-func)
   (declare (type read-func-type read-func))
@@ -305,9 +305,9 @@
 			   (start2 0) (end2 (length string))
 			   (state (make-instance 'scsu-state))
 			 &aux (string-fill-pointer-at-first (fill-pointer-if-exists string)))
-  (declare (type (array (unsigned-byte 8) *) bytes)
-	   (type fixnum start1 end1 start2 end2)
-	   (type string string))
+  (declare (type (array (unsigned-byte 8) (*)) bytes)
+  	   (type fixnum start1 end1 start2 end2)
+  	   (type string string))
   (scsu-trace-output "~2&")
   (with-buffer-accessor (:reader pick-byte :current src-current)
       (bytes start1 end1 :element-type (unsigned-byte 8))
@@ -365,7 +365,8 @@
 			   (lookup-dynamic-window state i))))
 
 (defun use-define-window-p (state code-point &optional next-code-point)
-  (declare (type unicode-code-point code-point next-code-point))
+  (declare (type unicode-code-point code-point)
+	   (type (or null unicode-code-point) next-code-point))
   (and (not (scsu-state-fix-dynamic-window state))
        (not (standalone-character-p code-point))
        (alexandria:if-let ((candidates (list-offset-candidates code-point)))
@@ -391,7 +392,7 @@
 
 (defun encode-define-window (state offset table-index write-func define-window-tag define-extended-tag)
   (declare (type unicode-code-point offset)
-	   (type (unsigned-byte 8) table-index)
+	   (type (or null (unsigned-byte 8)) table-index)
  	   (type write-func-type write-func)
 	   (type (unsigned-byte 8) define-window-tag define-extended-tag))
   (let ((new-window (find-LRU-dynamic-window state)))
@@ -495,7 +496,8 @@
 	  (encode-unit* state code-point next-code-point write-func)))))))
 
 (defun encode-unit*/unicode-mode (state code-point next-code-point write-func)
-  (declare (type unicode-code-point code-point next-code-point)
+  (declare (type unicode-code-point code-point)
+	   (type (or null unicode-code-point) next-code-point)
 	   (type write-func-type write-func))
   (cond ((<= code-point #x7F)		; Basic Latin
 	 (setf (scsu-state-mode state) :single-byte-mode)
@@ -525,7 +527,8 @@
 	 (write-16bit-code-point code-point write-func))))
 
 (defun encode-unit* (state code-point next-code-point write-func) ; recursion point
-  (declare (type unicode-code-point code-point next-code-point)
+  (declare (type unicode-code-point code-point)
+	   (type (or null unicode-code-point) next-code-point)
 	   (type write-func-type write-func))
   (ecase (scsu-state-mode state)
     (:single-byte-mode
@@ -534,7 +537,7 @@
      (encode-unit*/unicode-mode state code-point next-code-point write-func))))
 
 (defun encode-unit (state read-func write-func)
-  (declare (type read-func-type read-func))
+  ;; (declare (type read-func-type read-func))
   (let* ((char (funcall read-func))
 	 (next-char (funcall read-func t))
 	 (code-point (char-code char))

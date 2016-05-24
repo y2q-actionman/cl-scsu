@@ -17,7 +17,10 @@
      finally (return ret)))
 
 (defun test-example* (codepoints expected-compression)
-  (let* ((string (make-string-from-codepoints codepoints))
+  (let* ((expected-compression
+	  (make-array (length expected-compression) :element-type '(unsigned-byte 8)
+					   :initial-contents expected-compression))
+	 (string (make-string-from-codepoints codepoints))
 	 (expected-decompression (decode-to-string expected-compression)))
     (assert-equal string expected-decompression)
     (let* ((compressed (encode-from-string string))
@@ -43,12 +46,12 @@ Our Decompression: ~A~%Decompression from Expected: ~A~2%"
 (defun test-9.1 () 			; German
   (test-example*
    #(#x00D6 #x006C #x0020 #x0066 #x006C #x0069 #x0065 #x00DF #x0074)
-   #(#xD6 #x6C #x20 #x66 #x6C #x69 #x65 #xDF #x74)))
+   '(#xD6 #x6C #x20 #x66 #x6C #x69 #x65 #xDF #x74)))
 
 (defun test-9.2 () 			; Russian
   (test-example*
    #(#x041C #x043E #x0441 #x043A #x0432 #x0430)
-   #(#x12 #x9C #xBE #xC1 #xBA #xB2 #xB0)))
+   '(#x12 #x9C #xBE #xC1 #xBA #xB2 #xB0)))
 
 (defun test-9.3 () 			; Japanese
   (test-example*
@@ -67,7 +70,7 @@ Our Decompression: ~A~%Decompression from Expected: ~A~2%"
      #x3060 #x3002 #x300C #x30A2 #x30C3 #x30D7 #x30EB #x4FE1 ;だ。「アップル信
      #x8005 #x300D #x306A #x3093 #x3066 #x8A00 #x3044 #x65B9 ;者」なんて言い方
      #x307E #x3067 #x3042 #x308B #x3002) ;まである。
-   #(#x08 #x00 #x1B #x4C #xEA #x16 #xCA #xD3 #x94 #x0F #x53 #xEF #x61 #x1B #xE5 #x84
+   '(#x08 #x00 #x1B #x4C #xEA #x16 #xCA #xD3 #x94 #x0F #x53 #xEF #x61 #x1B #xE5 #x84
      #xC4 #x0F #x53 #xEF #x61 #x1B #xE5 #x84 #xC4 #x16 #xCA #xD3 #x94 #x08 #x02 #x0F
      #x53 #x4A #x4E #x16 #x7D #x00 #x30 #x82 #x52 #x4D #x30 #x6B #x6D #x41 #x88 #x4C
      #xE5 #x97 #x9F #x08 #x0C #x16 #xCA #xD3 #x94 #x15 #xAE #x0E #x6B #x4C #x08 #x0D
@@ -94,11 +97,12 @@ Our Decompression: ~A~%Decompression from Expected: ~A~2%"
 	   #x000D #x000A
 	   #x0041 #x00DF #x0401 #x015F #x00DF #x01DF #xF000
 	   #xDBFF #xDFFF)))
+    #+allegro
     (assert-equalp (make-string-from-codepoints utf-32-seq)
-		   (make-string-from-codepoints utf-16-seq))
+    		   (make-string-from-codepoints utf-16-seq))
     (test-example*
-     (if (> char-code-limit #xFFFF) utf-16-seq  utf-32-seq)
-     #(#x41 #xDF #x12 #x81 #x03 #x5F #x10 #xDF #x1B #x03 #xDF #x1C #x88 #x80
+     (if (> char-code-limit #xFFFF) utf-32-seq utf-16-seq)
+     '(#x41 #xDF #x12 #x81 #x03 #x5F #x10 #xDF #x1B #x03 #xDF #x1C #x88 #x80
        #x0B #xBF #xFF #xFF
        #x0D #x0A
        #x41 #x10 #xDF #x12 #x81 #x03 #x5F #x10 #xDF #x13 #xDF #x14 #x80

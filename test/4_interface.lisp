@@ -36,9 +36,8 @@
 	(dst-string (apply #'make-array 20 :element-type 'character make-array-args))
 	(tmp-bytes (apply #'make-array 30 :element-type '(unsigned-byte 8) make-array-args)))
     (declare (type string src-string dst-string)
-	     (type (array (unsigned-byte 8) (*)) tmp-bytes)
-	     (dynamic-extent dst-string tmp-bytes))
-    (fill tmp-bytes -1)
+	     (type (array (unsigned-byte 8) (*)) tmp-bytes))
+    (fill tmp-bytes #xFF)
     (fill dst-string #\rubout)
     ;; encode
     (multiple-value-bind (ret-bytes encoded-len encoder-used-len state)
@@ -82,7 +81,7 @@
 	     (type (simple-array (unsigned-byte 8) (*)) tmp-bytes)
 	     (type fixnum string-start string-end bytes-start)
 	     (dynamic-extent src-string dst-string tmp-bytes))
-    (fill tmp-bytes -1)
+    (fill tmp-bytes #xFF)
     (fill dst-string #\rubout)
     ;; make string
     (multiple-value-bind (_ s-end)

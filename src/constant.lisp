@@ -223,7 +223,7 @@
 	(values high low))))
 
 (defun decode-from-surrogate-pair (high low)
-  (declare (type (unsigned-byte 8) high low))
+  (declare (type (unsigned-byte 16) high low))
   (+ #x10000
      (ash (- high #xD800) 10)
      (- low #xDC00)))
