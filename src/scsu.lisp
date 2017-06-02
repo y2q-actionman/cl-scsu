@@ -8,7 +8,7 @@
   ((mode :initform :single-byte-mode :accessor scsu-state-mode)
    (dynamic-window :initform nil	; see lookup-dynamic-window
 		   :accessor scsu-state-dynamic-window)
-   (active-window-index :initform 0 :accessor scsu-state-active-window-index)
+   (active-window-index :initform 0 :accessor scsu-state-active-window-index :type window-index)
    (timestamp-vector :initform nil	; see scsu-state-timestamp and initialize-timestamp
 		     :accessor scsu-state-timestamp-vector)
    (current-timestamp :initform 0 :accessor scsu-state-current-timestamp :type fixnum)
@@ -570,12 +570,9 @@
 	   (encode-unit* state code-point next-code-point write-func)))))
 
 (defun initialize-timestamp (state initial-priority &optional string start end)
-  (etypecase (scsu-state-timestamp-vector state)
-    ((array fixnum)
-     (progn))				; nop
-    (null
-     (setf (scsu-state-timestamp-vector state)
-	   (make-array +window-count+ :element-type 'fixnum :initial-element -1))))
+  (unless (scsu-state-timestamp-vector state)
+    (setf (scsu-state-timestamp-vector state)
+	  (make-array +window-count+ :element-type 'fixnum :initial-element -1)))
   (cond
     ((eq initial-priority :fixed)
      (setf (scsu-state-fix-dynamic-window state) t))
