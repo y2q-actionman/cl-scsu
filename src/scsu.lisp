@@ -160,7 +160,7 @@
     (declare (type (unsigned-byte 8) next-byte1 next-byte2))
     (logior (ash next-byte1 8) next-byte2)))
 
-(defun scsu-define-window (state window offset)
+(defun apply-define-window (state window offset)
   (declare (type window-index window)
 	   (type unicode-code-point offset))
   (setf (scsu-state-active-window-index state) window)
@@ -173,7 +173,7 @@
     (declare (type (unsigned-byte 8) next-byte1 next-byte2))
     (multiple-value-bind (window offset)
 	(decode-extended-window-tag next-byte1 next-byte2)
-      (scsu-define-window state window offset))))
+      (apply-define-window state window offset))))
 
 (defun decode-unit*/single-byte-mode (state read-func)
   (declare (type read-func-type read-func))
@@ -200,7 +200,7 @@
 	     (#.+SDX+			; Define Extended
 	      (scsu-trace-output "SDX ")
 	      (decode-define-window-extended state read-func)
-	      '+SDX)
+	      '+SDX+)
 	     (#xC
 	      (error 'scsu-error
 		     :format-control "reserved byte ~A is used"
@@ -222,7 +222,7 @@
 	     ((#.+SD0+ #.+SD1+ #.+SD2+ #.+SD3+ #.+SD4+ #.+SD5+ #.+SD6+ #.+SD7+) ; Define Window
 	      (let ((window (find-SDn-window byte)))
 		(scsu-trace-output "SD~D " window)
-		(scsu-define-window state window
+		(apply-define-window state window
 				    (lookup-window-offset-table (funcall read-func))))
 	      '+SD0+)))
 	  ((<= byte #x7F)		  ; Basic Latin Block.
@@ -250,7 +250,7 @@
       ((#.+UD0+ #.+UD1+ #.+UD2+ #.+UD3+ #.+UD4+ #.+UD5+ #.+UD6+ #.+UD7+) ; Define Window
        (let ((window (find-UDn-window byte)))
 	 (scsu-trace-output "UD~D " window)
-	 (scsu-define-window state window
+	 (apply-define-window state window
 			   (lookup-window-offset-table (funcall read-func)))
 	 (setf (scsu-state-mode state) :single-byte-mode))
        '+UD0+)
@@ -400,7 +400,7 @@
 	   (type (unsigned-byte 8) define-window-tag define-extended-tag))
   (let ((new-window (find-LRU-dynamic-window state)))
     (declare (type window-index new-window))
-    (scsu-define-window state new-window offset)
+    (apply-define-window state new-window offset)
     (cond ((<= offset #xFFFF)		; 'SDn' case
 	   (funcall write-func (+ define-window-tag new-window))
 	   (funcall write-func table-index))
