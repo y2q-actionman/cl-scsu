@@ -160,14 +160,10 @@
     (declare (type (unsigned-byte 8) next-byte1 next-byte2))
     (logior (ash next-byte1 8) next-byte2)))
 
-(defun scsu-change-to-window (state window)
-  (declare (type window-index window))
-  (setf (scsu-state-active-window-index state) window))
-
 (defun scsu-define-window (state window offset)
   (declare (type window-index window)
 	   (type unicode-code-point offset))
-  (scsu-change-to-window state window)  
+  (setf (scsu-state-active-window-index state) window)
   (setf (scsu-state-active-window-offset state) offset))
 
 (defun decode-define-window-extended (state read-func)
@@ -221,7 +217,7 @@
 	     ((#.+SC0+ #.+SC1+ #.+SC2+ #.+SC3+ #.+SC4+ #.+SC5+ #.+SC6+ #.+SC7+) ; Change to Window
 	      (let ((window (find-SCn-window byte)))
 		(scsu-trace-output "SC~D " window)
-		(scsu-change-to-window state window))
+		(setf (scsu-state-active-window-index state) window))
 	      '+SC0+)
 	     ((#.+SD0+ #.+SD1+ #.+SD2+ #.+SD3+ #.+SD4+ #.+SD5+ #.+SD6+ #.+SD7+) ; Define Window
 	      (let ((window (find-SDn-window byte)))
@@ -248,7 +244,7 @@
       ((#.+UC0+ #.+UC1+ #.+UC2+ #.+UC3+ #.+UC4+ #.+UC5+ #.+UC6+ #.+UC7+) ; Change to Window
        (let ((window (find-UCn-window byte)))
 	 (scsu-trace-output "UC~D " window)
-	 (scsu-change-to-window state window)
+	 (setf (scsu-state-active-window-index state) window)
 	 (setf (scsu-state-mode state) :single-byte-mode))
        '+UC0+)
       ((#.+UD0+ #.+UD1+ #.+UD2+ #.+UD3+ #.+UD4+ #.+UD5+ #.+UD6+ #.+UD7+) ; Define Window
@@ -469,7 +465,7 @@
 		     (funcall write-func (+ +SQ0+ dwindow))
 		     (funcall write-func (+ (- code-point offset) #x80)))
 		    (t			; change
-		     (scsu-change-to-window state dwindow)
+		     (setf (scsu-state-active-window-index state) dwindow)
 		     (funcall write-func (+ +SC0+ dwindow))
 		     (encode-unit* state code-point next-code-point write-func))))))
 	 ;; 3byte or more
@@ -514,7 +510,7 @@
 				(_ (1byte-encodable-p state next-code-point dwindow)))
 	   (locally (declare (type window-index dwindow))
 	     (setf (scsu-state-mode state) :single-byte-mode)
-	     (scsu-change-to-window state dwindow)
+	     (setf (scsu-state-active-window-index state) dwindow)
 	     (funcall write-func (+ +UC0+ dwindow))
 	     (encode-unit* state code-point next-code-point write-func))))
 	((alexandria:when-let* ((offsets (use-define-window-p state code-point next-code-point)) ; define window
@@ -663,10 +659,10 @@
       ;; changes active window and mode if required
       (cond ((eq (scsu-state-mode state) :unicode-mode)
 	     (setf (scsu-state-mode state) :single-byte-mode)	     
-	     (scsu-change-to-window state 0)
+	     (setf (scsu-state-active-window-index state) 0)
 	     (put-byte +UC0+))
 	    ((/= 0 (scsu-state-active-window-index state))
-	     (scsu-change-to-window state 0)
+	     (setf (scsu-state-active-window-index state) 0)
 	     (put-byte +SC0+)))
       ;; clean object
       (scsu-state-reset state))
