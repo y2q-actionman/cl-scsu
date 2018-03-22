@@ -18,7 +18,15 @@ The MIT License. See LICENSE file.
 * asdf
 * alexandria
 
-## Loading
+## Load by quicklisp
+
+[![Quicklisp](http://quickdocs.org/badge/cl-scsu.svg)](http://quickdocs.org/cl-scsu/)
+
+```lisp
+(ql:quickload "cl-scsu")
+```
+
+## or, Load manually
 
 ```lisp
 (load "cl-scsu.asd")
