@@ -29,14 +29,14 @@ The MIT License. See LICENSE file.
 ## or, Load manually
 
 ```lisp
-(load "cl-scsu.asd")
+(asdf:load-asd "cl-scsu.asd")
 (asdf:load-system :cl-scsu)
 ```
 
 For running tests, do below additionally.
 
 ```lisp
-(load "cl-scsu-test.asd")
+(asdf:load-asd "cl-scsu-test.asd")
 (asdf:test-system :cl-scsu)
 ```
 
