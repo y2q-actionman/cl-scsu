@@ -1,3 +1,5 @@
+;;; -*- coding: utf-8; -*-
+
 (in-package :cl-scsu)
 
 (defvar *scsu-state-trace* nil
@@ -13,8 +15,10 @@
 		     :accessor scsu-state-timestamp-vector)
    (current-timestamp :initform 0 :accessor scsu-state-current-timestamp :type fixnum)
    (fix-dynamic-window :initarg :fix-dynamic-window :initform nil
-		       :accessor scsu-state-fix-dynamic-window :type boolean)
-   ))
+		       :accessor scsu-state-fix-dynamic-window :type boolean))
+  (:documentation "The class of an object holding the internal state of SCSU.
+====
+SCSUの内部状態を保持するオブジェクトのクラス。"))
 
 (defgeneric lookup-dynamic-window (state window)
   (:method ((state scsu-state) window)
@@ -94,7 +98,9 @@
 			     )))	; Decline
 	     (progn ,@body))
 	 (restore-state ()
-	   :report "Restore SCSU state to a restartable previous state, and return"
+	   :report "Restore SCSU state to a restartable previous state (the last character or bytes collectly processed), and returns values at that time.
+====
+この restart を使用すると、各関数は、最後に正常に処理することのできた文字、もしくはバイトまで処理を巻き戻し、その時点での値を返す。"
 	   (setf (slot-value ,%state 'mode) ,%m
 		 (slot-value ,%state 'dynamic-window) (if ,%d-w (replace ,%d-w ,%d-w-contents) nil)
 		 (slot-value ,%state 'active-window-index) ,%a-w-i
@@ -308,6 +314,79 @@
 			   (start2 0) (end2 (length string))
 			   (state (make-instance 'scsu-state))
 			 &aux (string-fill-pointer-at-first (fill-pointer-if-exists string)))
+  "This function decompresses BYTES compressed by the SCSU and returns the result as a string.
+Returned values are following:
+
+1. The result string decompressed by SCSU.
+2. The position of the next of the last character written to the result string.
+3. The position of the next of the last byte read from BYTES.
+4. `scsu-state' object.
+
+Arguments are:
+
+- BYTES
+
+  A byte sequence compressed by SCSU.
+	
+- START1, END1
+
+  Specifies the range of BYTES argument should be used.
+  Initial value is 0 and the length of BYTES respectively.
+	
+- STRING
+
+  Specifies an output storage filled by the decompression result.
+  This specified string is returned by `decode-to-string'.
+  If not specified, a new string is allocated and returned.
+
+- START2, END2
+
+  Specifies the range of STRING argument used.
+  Initial value is 0 and the length of STRING respectively.
+  If STRING is not specified, these arguments are ignored.
+	
+- STATE
+
+  If specifies a `scsu-state' object returned by previous `decode-to-string' calls,
+  the shift state included the object is used.
+  If not specified, the initial state [http://unicode.org/reports/tr6/#Initial_State] is used.
+
+====
+
+BYTES に渡された SCSU で圧縮されたバイト列を文字列に変換して返す。
+戻値は以下の通り:
+
+1. SCSU解凍結果の文字列
+2. 1. で返された文字列に、最後に書き出した文字の次の位置
+3. BYTES で渡したバイト列で、最後に読み込んだバイトの次の位置
+4. `scsu-state' オブジェクト
+
+引数:
+
+- BYTES
+
+  SCSU圧縮されたバイト列。
+
+- START1, END1
+
+  BYTES 引数に渡したバイト列の使用範囲を指定する。初期値は、それぞれ `0' と BYTES の長さ.
+	
+- STRING
+
+  SCSU解凍結果を格納する先の文字列。ここで指定された文字列が返される。
+  未指定の場合、新しい文字列を割り当てて返す。
+
+- START2, END2
+
+  STRING 引数に渡した文字列の使用範囲を指定する。
+  初期値は、それぞれ 0 と STRING の長さ.
+  STRING を指定しなかった場合、無視される。
+	
+- STATE
+
+  他の `decode-to-string' 呼び出しで返された `scsu-state' オブジェクトを
+  渡すことにより、シフト状態などを引き継いで使用できる。
+  指定しない場合、 初期シフト状態 [http://unicode.org/reports/tr6/#Initial_State] を使用する。"
   (declare (type (array (unsigned-byte 8) (*)) bytes)
   	   (type fixnum start1 end1 start2 end2)
   	   (type string string))
@@ -604,6 +683,94 @@
 			     (initial-priority :lookahead)
 			     (state (make-instance 'scsu-state))
 			   &aux (bytes-fill-pointer-at-first (fill-pointer-if-exists bytes)))
+  "This function compresses STRING by SCSU and returns the result as a byte sequence.
+Returned values are following:
+
+1. The result byte sequence compressed by SCSU.
+2. The position of the next of the last byte written to the result byte sequence.
+3. The position of the next of the last characted read from STRING.
+4. `scsu-state' object.
+
+Arguments are:
+
+- STRING
+
+  A string to be compressed by SCSU.
+	
+- START1, END1
+	
+  Specifies the range of STRING argument should be used.
+  Initial value is 0 and the length of STRING respectively.
+	
+- BYTES
+	
+  Specifies an output storage filled by the compression result.
+  This specified byte sequence is returned by `encode-from-string'.
+  If not specified, a new byte sequence is allocated and returned.
+
+- START2, END2
+
+  Specifies the range of BYTES argument used.
+  Initial value is 0 and the length of BYTES respectively.
+  If BYTES is not specified, these arguments are ignored.
+
+- INITIAL-PRIORITY
+
+  Specifies how to determine the priority of the initial dynamic window [http://unicode.org/reports/tr6/#Initial_Window] of SCSU as following:
+
+  - `:lookahead' (default) :: Determines by lookaheading STRING argument.
+  - `:fixed' :: Don't change dynamic window.
+  - `:random' :: determines randomly.
+  - an interger array :: Uses the array as a priority. Bigger is prior.
+
+- STATE
+
+  If specifies a `scsu-state' object returned by previous `encode-from-string' calls,
+  the shift state included the object is used.
+  If not specified, the initial state [http://unicode.org/reports/tr6/#Initial_State] is used.
+
+====
+
+STRING を SCSU で圧縮したバイト列に変換して返す。
+戻値は以下の通り:
+
+1. SCSU圧縮結果のバイト列
+2. 1. で返されたバイト列に、最後に書き出したバイトの次の位置
+3. BYTES で渡した文字列で、最後に読み込んだ文字の次の位置
+4. `scsu-state' オブジェクト
+
+- STRING
+
+  SCSU圧縮する文字列。
+
+- START1, END1
+
+  STRING 引数に渡した文字列の使用範囲を指定する。初期値は、それぞれ 0 と STRING の長さ.
+	
+- BYTES
+	
+  SCSU圧縮結果を格納する先のバイト列。ここで指定されたバイト列が返される。
+  未指定の場合、新しいバイト列を割り当てて返す。
+
+- START2, END2
+
+  BYTES 引数に渡したバイト列の使用範囲を指定する。
+  初期値は、それぞれ 0 と BYTES の長さ.
+  BYTES を指定しなかった場合、無視される。
+	
+- INITIAL-PRIORITY
+
+  SCSUの 初期 dynamic window [http://unicode.org/reports/tr6/#Initial_Window] の優先順序を指定する。指定可能な値は以下の通り:
+  - `:LOOKAHEAD' (初期値) :: STRING 引数の内容を先読みして決定する。
+  - `:fixed' :: dynamic window を変更しない。
+  - `:random' :: 乱数で適当に決める。
+  - 数値配列 :: 渡した数列を初期 dynamic window の優先度として使用する。大きい値が優先される。
+
+- STATE
+
+  他の `encode-from-string' 呼び出しで返された `scsu-state' オブジェクトを
+  渡すことにより、シフト状態などを引き継いで使用できる。
+  指定しない場合、 初期シフト状態 [http://unicode.org/reports/tr6/#Initial_State] を使用する。"
   (declare (type string string)
 	   (type (array (unsigned-byte 8) *) bytes)	   
 	   (type fixnum start1 end1 start2 end2))
@@ -630,6 +797,54 @@
 						      :element-type '(unsigned-byte 8)))
 				(start 0) (end (length bytes))
 			      &aux (bytes-fill-pointer-at-first (fill-pointer-if-exists bytes)))
+  "This function returns a byte sequence to change STATE to the initial state.
+Returned values are following:
+
+1. A byte sequence.
+2. The position of the next of the last byte written to the result byte sequence.
+3. `scsu-state' object.
+
+Arguments are:
+
+- STATE
+
+  A `scsu-state' object.
+
+- BYTES
+	
+  Specifies an output storage filled by the result.
+  This specified byte sequence is returned by `encode-reset-sequence'.
+  If not specified, a new byte sequence is allocated and returned.
+
+- START, END
+
+  Specifies the range of BYTES argument used.
+  Initial value is 0 and the length of BYTES respectively.
+  If BYTES is not specified, these arguments are ignored.
+
+====
+
+STATE の内部状態を SCSU の初期状態に戻すためのバイト列を返す。
+戻値は以下の通り:
+
+1. バイト列
+2. 1. で返されたバイト列に、最後に書き出したバイトの次の位置
+3. `scsu-state' オブジェクト
+
+- STATE
+
+  `scsu-state' オブジェクト.
+
+- BYTES
+	
+  格納先のバイト列。ここで指定されたバイト列が返される。
+  未指定の場合、新しいバイト列を割り当てて返す。
+
+- START, END
+
+  BYTES 引数に渡したバイト列の使用範囲を指定する。
+  初期値は、それぞれ 0 と BYTES の長さ.
+  BYTES を指定しなかった場合、無視される。"
   (declare (type (array (unsigned-byte 8) *) bytes)	   
 	   (type fixnum start end))
   (with-buffer-accessor (:writer put-byte :current dst-current)

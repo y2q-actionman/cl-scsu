@@ -72,4 +72,11 @@ CL-USER> (cl-scsu:decode-to-string *)
 
 # API
 
-see [API.md](API.md).
+Please see docstrings of symbols exported from `cl-scsu` package:
+
+- [Function] `decode-to-string`
+- [Function] `encode-from-string`
+- [Function] `encode-reset-sequence`
+- [Class] `scsu-state`
+- [Condition] `scsu-error`
+- [Restart] `restore-state`

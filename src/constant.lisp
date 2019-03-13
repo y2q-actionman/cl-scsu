@@ -1,3 +1,5 @@
+;;; -*- coding: utf-8; -*-
+
 (in-package :cl-scsu)
 
 ;;; Types
@@ -20,7 +22,12 @@
 			      (dst-pos scsu-error-dst-error-position))
 		 condition
 	       (format stream "~? [at SRC ~A, DST ~A] "
-		       original-format original-args src-pos dst-pos)))))
+		       original-format original-args src-pos dst-pos))))
+  (:documentation "If some error occurs in `decode-to-string',
+`encode-from-string', or `encode-reset-sequence', this condition is reported.
+====
+`decode-to-string', `encode-from-string', `encode-reset-sequence' で
+エラーが発生した場合、この condition が報告される。"))
 
 
 ;;; Tags
