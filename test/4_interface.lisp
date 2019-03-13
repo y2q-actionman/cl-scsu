@@ -42,35 +42,35 @@
     ;; encode
     (multiple-value-bind (ret-bytes encoded-len encoder-used-len state)
 	(encode-from-string src-string :bytes tmp-bytes)
-      (assert (eq ret-bytes tmp-bytes))
-      (assert (eq encoder-used-len (length src-string)))
+      (is (eq ret-bytes tmp-bytes))
+      (is (eq encoder-used-len (length src-string)))
       ;; decode
       (encode-reset-sequence state)	; reuse state object
       (multiple-value-bind (ret-string decoded-len decoder-used-len ret-state)
 	  (decode-to-string tmp-bytes :end1 encoded-len :string dst-string
 			    :state state)
-	(assert (eq ret-string dst-string))
-	(assert (= encoded-len decoder-used-len))
-	(assert (eq state ret-state))
-	(assert (string= src-string dst-string :end2 decoded-len)))))
+	(is (eq ret-string dst-string))
+	(is (= encoded-len decoder-used-len))
+	(is (eq state ret-state))
+	(is (string= src-string dst-string :end2 decoded-len)))))
   t)
 
-(defun test-buffer-args ()
+(test test-buffer-args
   (and
    (test-buffer-args* '())
    (test-buffer-args* '(:fill-pointer 0	:adjustable nil))
    t))
 
-(defun test-ignored-write-buffer-args ()
+(test test-ignored-write-buffer-args
   (let* ((str (make-test-string))
 	 (encoded (encode-from-string str
 				      :start2 5 :end2 2)) ; these are ignored
 	 (decoded (decode-to-string encoded
 				    :start2 9 :end2 1))) ; these are ignored
-    (assert (string= str decoded)))
+    (is (string= str decoded)))
   t)
 
-(defun test-range-args ()
+(test test-range-args
   (let* ((src-string (make-array 20 :element-type 'character))
 	 (dst-string (make-array 20 :element-type 'character))
 	 (tmp-bytes (make-array 30 :element-type '(unsigned-byte 8)))
@@ -92,17 +92,17 @@
     (multiple-value-bind (ret-bytes encoded-pos encoder-reached-pos)
 	(encode-from-string src-string :start1 string-start :end1 string-end
 			    :bytes tmp-bytes :start2 bytes-start)
-      (assert (eq ret-bytes tmp-bytes))
-      (assert (= encoder-reached-pos string-end))
+      (is (eq ret-bytes tmp-bytes))
+      (is (= encoder-reached-pos string-end))
       ;; decode
       (multiple-value-bind (ret-string decoded-pos decoder-reached-pos)
 	  (decode-to-string tmp-bytes :start1 bytes-start :end1 encoded-pos
 			    :string dst-string :start2 string-start :end2 string-end)
-	(assert (eq ret-string dst-string))
-	(assert (= decoder-reached-pos encoded-pos))
-	(assert (string= src-string dst-string
-			 :start1 string-start :end1 string-end
-			 :start2 string-start :end2 decoded-pos)))))
+	(is (eq ret-string dst-string))
+	(is (= decoder-reached-pos encoded-pos))
+	(is (string= src-string dst-string
+		     :start1 string-start :end1 string-end
+		     :start2 string-start :end2 decoded-pos)))))
   t)
 
 ;;; Encoder options
@@ -111,18 +111,18 @@
   (let* ((str (make-test-string))
 	 (encoded (apply #'encode-from-string str args))
 	 (decoded-rets (multiple-value-list (decode-to-string encoded))))
-    (assert (string= str (first decoded-rets)))
+    (is (string= str (first decoded-rets)))
     (apply #'values decoded-rets)))
 
-(defun test-initial-priority-arg ()
+(test test-initial-priority-arg
   (encode-decode :initial-priority :lookahead)
   (encode-decode :initial-priority :random)
   (encode-decode :initial-priority #(1 2 3 4 5 6 7 8))
   (let ((decoder-state (nth-value 3 (encode-decode :initial-priority :fixed))))
-    (assert (null (cl-scsu::scsu-state-dynamic-window decoder-state))))
+    (is (null (cl-scsu::scsu-state-dynamic-window decoder-state))))
   t)
 
-(defun test-continuous-encoding ()
+(test test-continuous-encoding
   (multiple-value-bind (src-string src-string-len)
       (make-test-string)
     (declare (type string src-string)
@@ -137,36 +137,36 @@
       (multiple-value-bind (_bytes encoded-pos __ state)
 	  (encode-from-string src-string :bytes tmp-bytes)
 	(declare (ignore __))
-	(assert (eq _bytes tmp-bytes))
+	(is (eq _bytes tmp-bytes))
 	(multiple-value-bind (_bytes encoded-pos2 __ _state)
 	    (encode-from-string src-string :bytes tmp-bytes :start2 encoded-pos :state state) ; reuse state
 	  (declare (ignore __))
-	  (assert (eq _bytes tmp-bytes))
-	  (assert (eq _state state))
+	  (is (eq _bytes tmp-bytes))
+	  (is (eq _state state))
 	  (multiple-value-bind (_bytes encoded-pos3 _state)
 	      (encode-reset-sequence state :bytes tmp-bytes :start encoded-pos2) ; reset state
-	    (assert (eq _bytes tmp-bytes))
-	    (assert (eq _state state))
+	    (is (eq _bytes tmp-bytes))
+	    (is (eq _state state))
 	    (multiple-value-bind (_bytes encoded-pos4)
 		(encode-from-string src-string :bytes tmp-bytes :start2 encoded-pos3) ; use a new state
-	      (assert (eq _bytes tmp-bytes))
+	      (is (eq _bytes tmp-bytes))
 	      (setf bytes-end encoded-pos4)))))
       ;; decode
       (let ((ret-string (decode-to-string tmp-bytes :end1 bytes-end)))
-	(assert (= (length ret-string) (* 3 src-string-len)))
+	(is (= (length ret-string) (* 3 src-string-len)))
 	(loop for i of-type fixnum from 0 below 2
-	   do (assert (string= src-string ret-string
-			       :start2 (* i src-string-len) :end2 (* (1+ i) src-string-len)))))))
+	   do (is (string= src-string ret-string
+			   :start2 (* i src-string-len) :end2 (* (1+ i) src-string-len)))))))
   t)
 
-(defun test-empty-reset ()
-  (assert (= 0 (length (encode-reset-sequence (make-instance 'scsu-state)))))
+(test test-empty-reset
+  (is (= 0 (length (encode-reset-sequence (make-instance 'scsu-state)))))
   (multiple-value-bind (bytes len _ state)
       (encode-from-string "a")
     (declare (ignore _))
-    (assert (= (aref bytes 0) (char-code #\a)))
-    (assert (= len 1))
-    (assert (= 0 (length (encode-reset-sequence state)))))
+    (is (= (aref bytes 0) (char-code #\a)))
+    (is (= len 1))
+    (is (= 0 (length (encode-reset-sequence state)))))
   t)
   
 ;; TODO: test (encode-reset-sequence <initial-state>) == 0 bytes.
@@ -183,9 +183,9 @@
 			      (setf ,raised? c)
 			      (invoke-restart 'restore-state))))
 	     (progn ,@body))
-	 (assert ,raised?)))))
+	 (is ,raised?)))))
 
-(defun test-write-exhaust ()
+(test test-write-exhaust
   (let ((src-string "0123456")
 	(tmp-bytes (make-array 10 :element-type '(unsigned-byte 8)))
 	(dst-string (make-array 10 :element-type 'character)))
@@ -196,18 +196,18 @@
 	(with-restoring-state-test
 	  (encode-from-string src-string :bytes tmp-bytes :end2 5))
       (declare (ignore _))
-      (assert (= src-used 5))
-      (assert (= bytes-used 5)))
+      (is (= src-used 5))
+      (is (= bytes-used 5)))
     (multiple-value-bind (_ dst-used bytes-used-2)
 	(with-restoring-state-test
 	  (decode-to-string tmp-bytes :end1 5 :string dst-string :end2 4))
       (declare (ignore _))
-      (assert (= bytes-used-2 4))
-      (assert (= dst-used 4)))
-    (assert (string= src-string dst-string :end1 4 :end2 4)))
+      (is (= bytes-used-2 4))
+      (is (= dst-used 4)))
+    (is (string= src-string dst-string :end1 4 :end2 4)))
   t)
     
-(defun test-bad-surrogate ()
+(test test-bad-surrogate
   (let ((src-string (make-array 2 :element-type 'character)))
     (declare (type simple-string src-string)
 	     (dynamic-extent src-string))
@@ -216,9 +216,9 @@
 	     (setf (schar src-string 1) (code-char bad-code))
 	     (multiple-value-bind (bytes bytes-len src-used)
 		 (with-restoring-state-test (encode-from-string src-string))
-	       (assert (= (aref bytes 0) (char-code #\a)))
-	       (assert (= bytes-len 1))
-	       (assert (= src-used 1)))))
+	       (is (= (aref bytes 0) (char-code #\a)))
+	       (is (= bytes-len 1))
+	       (is (= src-used 1)))))
       (test-encode #xD800)
       (test-encode #xDFFF)))
   (let ((src-bytes (make-array 4 :element-type '(unsigned-byte 8))))
@@ -231,14 +231,14 @@
 	     (setf (aref src-bytes 3) (ldb (byte 8 0) bad-code))
 	     (multiple-value-bind (string string-len bytes-used)
 		 (with-restoring-state-test (decode-to-string src-bytes))
-	       (assert (= string-len 1))
-	       (assert (char= (char string 0) #\a))
-	       (assert (= bytes-used 1)))))
+	       (is (= string-len 1))
+	       (is (char= (char string 0) #\a))
+	       (is (= bytes-used 1)))))
       (test-decode #xD800)
       (test-decode #xDFFF)))
   t)
     
-(defun test-decode-bad-tag ()
+(test test-decode-bad-tag
   (let ((src-bytes (make-array 16 :element-type '(unsigned-byte 8))))
     (declare (type (simple-array (unsigned-byte 8) (*)) src-bytes)
 	     (dynamic-extent src-bytes))
@@ -250,9 +250,9 @@
 		do (setf (aref src-bytes (+ 3 i)) i)
 		  (multiple-value-bind (string string-len bytes-used)
 		      (with-restoring-state-test (decode-to-string src-bytes :end1 (+ 3 i)))
-		    (assert (= string-len 1))
-		    (assert (char= (char string 0) #\a))
-		    (assert (= bytes-used 2))))))
+		    (is (= string-len 1))
+		    (is (char= (char string 0) #\a))
+		    (is (= bytes-used 2))))))
       ;; single-byte mode
       (setf (aref src-bytes 1) cl-scsu::+SC1+)
       (test-tag cl-scsu::+SQU+ 2)
@@ -269,7 +269,7 @@
       (test-tag cl-scsu::+UDX+ 2)))
   t)
 	
-(defun test-decode-reserved-bytes ()
+(test test-decode-reserved-bytes
   (let ((src-bytes (make-array 4 :element-type '(unsigned-byte 8))))
     (declare (type (simple-array (unsigned-byte 8) (*)) src-bytes)
 	     (dynamic-extent src-bytes))
@@ -281,9 +281,9 @@
 		finally
 		  (multiple-value-bind (string string-len bytes-used)
 		      (with-restoring-state-test (decode-to-string src-bytes :end1 i))
-		    (assert (= string-len 1))
-		    (assert (char= (char string 0) #\a))
-		    (assert (= bytes-used (+ 1 good-bytes-len)))))))
+		    (is (= string-len 1))
+		    (is (char= (char string 0) #\a))
+		    (is (= bytes-used (+ 1 good-bytes-len)))))))
       ;; single-byte mode reserved byte
       (test-bad-bytes '(#xC) 0)
       ;; unicode mode reserved byte
@@ -293,18 +293,3 @@
       (test-bad-bytes `(,cl-scsu::+SD0+ #xA8) 0)
       (test-bad-bytes `(,cl-scsu::+SD0+ #xF8) 0)))
   t)
-  
-;;; Main
-(defun test-interface ()
-  (and (test-buffer-args)
-       (test-ignored-write-buffer-args)
-       (test-range-args)
-       (test-initial-priority-arg)
-       (test-continuous-encoding)
-       (test-empty-reset)
-       
-       (test-write-exhaust)
-       (test-bad-surrogate)
-       (test-decode-bad-tag)
-       (test-decode-reserved-bytes)
-       t))

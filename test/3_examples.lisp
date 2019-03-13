@@ -22,7 +22,7 @@
 					   :initial-contents expected-compression))
 	 (string (make-string-from-codepoints codepoints))
 	 (expected-decompression (decode-to-string expected-compression)))
-    (assert-equal string expected-decompression)
+    (is (equal string expected-decompression))
     (let* ((compressed (encode-from-string string))
 	   (decompressed (decode-to-string compressed))
 	   (compressed-len (length compressed))
@@ -34,7 +34,7 @@ Our Decompression: ~A~%Decompression from Expected: ~A~2%"
 	      expected-compression-len expected-compression
 	      compressed-len compressed
 	      decompressed expected-decompression)
-      (assert-equal decompressed string)
+      (is (equal decompressed string))
       (unless (equalp compressed expected-decompression)
 	(when (> compressed-len expected-compression-len)
 	  #+()
@@ -43,17 +43,17 @@ Our Decompression: ~A~%Decompression from Expected: ~A~2%"
   t)
   
 
-(defun test-9.1 () 			; German
+(test test-9.1				; German
   (test-example*
    #(#x00D6 #x006C #x0020 #x0066 #x006C #x0069 #x0065 #x00DF #x0074)
    '(#xD6 #x6C #x20 #x66 #x6C #x69 #x65 #xDF #x74)))
 
-(defun test-9.2 () 			; Russian
+(test test-9.2				; Russian
   (test-example*
    #(#x041C #x043E #x0441 #x043A #x0432 #x0430)
    '(#x12 #x9C #xBE #xC1 #xBA #xB2 #xB0)))
 
-(defun test-9.3 () 			; Japanese
+(test test-9.3				; Japanese
   (test-example*
    #(#x3000 #x266A #x30EA #x30F3 #x30B4 #x53EF #x611B ;　♪リンゴ可愛
      #x3044 #x3084 #x53EF #x611B #x3044 #x3084 #x30EA #x30F3 ;いや可愛いやリン
@@ -84,7 +84,7 @@ Our Decompression: ~A~%Decompression from Expected: ~A~2%"
      #xCB #x82)))
 ;;; To make optimal compression, we must lookahead 3 chars (at "の歌」がぴったり" Hiraganas)
 
-(defun test-9.4 ()			; all features
+(test test-9.4 ()			; all features
   (let ((utf-32-seq
 	 #(#x0041 #x00DF #x0401 #x015F #x00DF #x01DF #xF000
 	   #x10FFFF
@@ -98,8 +98,8 @@ Our Decompression: ~A~%Decompression from Expected: ~A~2%"
 	   #x0041 #x00DF #x0401 #x015F #x00DF #x01DF #xF000
 	   #xDBFF #xDFFF)))
     #+allegro
-    (assert-equalp (make-string-from-codepoints utf-32-seq)
-    		   (make-string-from-codepoints utf-16-seq))
+    (is (equalp (make-string-from-codepoints utf-32-seq)
+    		(make-string-from-codepoints utf-16-seq)))
     (test-example*
      (if (> char-code-limit #xFFFF) utf-32-seq utf-16-seq)
      '(#x41 #xDF #x12 #x81 #x03 #x5F #x10 #xDF #x1B #x03 #xDF #x1C #x88 #x80
@@ -108,10 +108,3 @@ Our Decompression: ~A~%Decompression from Expected: ~A~2%"
        #x41 #x10 #xDF #x12 #x81 #x03 #x5F #x10 #xDF #x13 #xDF #x14 #x80
        #x15 #xFF))))
 ;;; This example uses SDX for U+10FFFF. cl-scsu don't do so because U+10FFFF is a non-character.
-
-(defun test-examples ()
-  (and (test-9.1)
-       (test-9.2)
-       (test-9.3)
-       (test-9.4)
-       t))
