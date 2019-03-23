@@ -1,16 +1,17 @@
 (in-package :cl-scsu.test)
 
+(declaim (type list +test-chars+))
+(define-constant +test-chars+
+  (list (char-code #\a) #x3041 #x30A1 #xFF65 #x10000 #x10001 #x10FFFF)
+  :test 'equal)
+
 (defun make-test-string (&key (str-buffer (make-array 16 :element-type 'character :fill-pointer t))
-			   (start 0) (end (length str-buffer))
-			 &aux (test-chars (list (char-code #\a) #x3041 #x30A1
-						#xFF65 #x10000 #x10001 #x10FFFF)))
+			   (start 0) (end (length str-buffer)))
   (declare (type string str-buffer)
-	   (type fixnum start end)
-	   (type list test-chars)
-	   (dynamic-extent test-chars))
+	   (type fixnum start end))
   (fill str-buffer #\rubout :start 0 :end start)
   (loop with i = start
-     for c in test-chars
+     for c in +test-chars+
      while (< i end)
      if (>= c char-code-limit)		; UTF-16 check
      do (multiple-value-bind (h l)
@@ -43,7 +44,7 @@
     (multiple-value-bind (ret-bytes encoded-len encoder-used-len state)
 	(encode-from-string src-string :bytes tmp-bytes)
       (is (eq ret-bytes tmp-bytes))
-      (is (eq encoder-used-len (length src-string)))
+      (is (= encoder-used-len (length src-string)))
       ;; decode
       (encode-reset-sequence state)	; reuse state object
       (multiple-value-bind (ret-string decoded-len decoder-used-len ret-state)
@@ -56,10 +57,8 @@
   t)
 
 (test test-buffer-args
-  (and
-   (test-buffer-args* '())
-   (test-buffer-args* '(:fill-pointer 0	:adjustable nil))
-   t))
+  (test-buffer-args* '())
+  (test-buffer-args* '(:fill-pointer 0	:adjustable nil)))
 
 (test test-ignored-write-buffer-args
   (let* ((str (make-test-string))
@@ -67,8 +66,7 @@
 				      :start2 5 :end2 2)) ; these are ignored
 	 (decoded (decode-to-string encoded
 				    :start2 9 :end2 1))) ; these are ignored
-    (is (string= str decoded)))
-  t)
+    (is (string= str decoded))))
 
 (test test-range-args
   (let* ((src-string (make-array 20 :element-type 'character))
@@ -102,8 +100,7 @@
 	(is (= decoder-reached-pos encoded-pos))
 	(is (string= src-string dst-string
 		     :start1 string-start :end1 string-end
-		     :start2 string-start :end2 decoded-pos)))))
-  t)
+		     :start2 string-start :end2 decoded-pos))))))
 
 ;;; Encoder options
 				
@@ -119,8 +116,7 @@
   (encode-decode :initial-priority :random)
   (encode-decode :initial-priority #(1 2 3 4 5 6 7 8))
   (let ((decoder-state (nth-value 3 (encode-decode :initial-priority :fixed))))
-    (is (null (cl-scsu::scsu-state-dynamic-window decoder-state))))
-  t)
+    (is (null (cl-scsu::scsu-state-dynamic-window decoder-state)))))
 
 (test test-continuous-encoding
   (multiple-value-bind (src-string src-string-len)
@@ -156,18 +152,16 @@
 	(is (= (length ret-string) (* 3 src-string-len)))
 	(loop for i of-type fixnum from 0 below 2
 	   do (is (string= src-string ret-string
-			   :start2 (* i src-string-len) :end2 (* (1+ i) src-string-len)))))))
-  t)
+			   :start2 (* i src-string-len) :end2 (* (1+ i) src-string-len))))))))
 
 (test test-empty-reset
-  (is (= 0 (length (encode-reset-sequence (make-instance 'scsu-state)))))
+  (is (zerop (length (encode-reset-sequence (make-instance 'scsu-state)))))
   (multiple-value-bind (bytes len _ state)
       (encode-from-string "a")
     (declare (ignore _))
     (is (= (aref bytes 0) (char-code #\a)))
     (is (= len 1))
-    (is (= 0 (length (encode-reset-sequence state)))))
-  t)
+    (is (zerop (length (encode-reset-sequence state))))))
   
 ;; TODO: test (encode-reset-sequence <initial-state>) == 0 bytes.
 
@@ -175,7 +169,7 @@
 ;;; Restart
 
 (defmacro with-restoring-state-test (&body body)
-  (alexandria:with-gensyms (raised?)
+  (with-gensyms (raised?)
     `(let ((,raised? nil))
        (multiple-value-prog1 
 	   (handler-bind
@@ -204,8 +198,7 @@
       (declare (ignore _))
       (is (= bytes-used-2 4))
       (is (= dst-used 4)))
-    (is (string= src-string dst-string :end1 4 :end2 4)))
-  t)
+    (is (string= src-string dst-string :end1 4 :end2 4))))
     
 (test test-bad-surrogate
   (let ((src-string (make-array 2 :element-type 'character)))
@@ -235,8 +228,7 @@
 	       (is (char= (char string 0) #\a))
 	       (is (= bytes-used 1)))))
       (test-decode #xD800)
-      (test-decode #xDFFF)))
-  t)
+      (test-decode #xDFFF))))
     
 (test test-decode-bad-tag
   (let ((src-bytes (make-array 16 :element-type '(unsigned-byte 8))))
@@ -266,8 +258,7 @@
       (test-tag cl-scsu::+UQU+ 2)
       (loop for tag from cl-scsu::+UD0+ to cl-scsu::+UD7+
 	 do (test-tag tag 1))
-      (test-tag cl-scsu::+UDX+ 2)))
-  t)
+      (test-tag cl-scsu::+UDX+ 2))))
 	
 (test test-decode-reserved-bytes
   (let ((src-bytes (make-array 4 :element-type '(unsigned-byte 8))))
@@ -291,5 +282,4 @@
       ;; window offset table reserved byte
       (test-bad-bytes `(,cl-scsu::+SD0+ #x0) 0)
       (test-bad-bytes `(,cl-scsu::+SD0+ #xA8) 0)
-      (test-bad-bytes `(,cl-scsu::+SD0+ #xF8) 0)))
-  t)
+      (test-bad-bytes `(,cl-scsu::+SD0+ #xF8) 0))))

@@ -16,6 +16,8 @@
      do (vector-push-extend (code-char cp) ret)
      finally (return ret)))
 
+(defparameter *test-example-explain* nil "debug switch")
+
 (defun test-example* (codepoints expected-compression)
   (let* ((expected-compression
 	  (make-array (length expected-compression) :element-type '(unsigned-byte 8)
@@ -27,19 +29,21 @@
 	   (decompressed (decode-to-string compressed))
 	   (compressed-len (length compressed))
 	   (expected-compression-len (length expected-compression)))
-      #+()
-      (format t "~&Codepoints: ~A~%String: ~A~%Expected Compression: (~D)~%~A~%Our Compression: (~D)~%~A
-Our Decompression: ~A~%Decompression from Expected: ~A~2%"
-	      codepoints string
-	      expected-compression-len expected-compression
-	      compressed-len compressed
-	      decompressed expected-decompression)
+      (when *test-example-explain*
+	(format *debug-io*
+		"~&Codepoints: ~A~%String: ~A~%Expected Compression: (~D)~%~A~%Our Compression: (~D)~%~A~%Our Decompression: ~A~%Decompression from Expected: ~A~2%"
+		codepoints string
+		expected-compression-len expected-compression
+		compressed-len compressed
+		decompressed expected-decompression))
       (is (equal decompressed string))
       (unless (equalp compressed expected-decompression)
+	;; Print a message when our compression is bigger than expectation. (If smaller?, it's good!)
 	(when (> compressed-len expected-compression-len)
-	  #+()
-	  (warn "Our compressed length ~D is longer than expected compression length ~D~%"
-		compressed-len expected-compression-len)))))
+	  (when *test-example-explain*
+	    (format *debug-io*
+		    "~&Our compression length ~D is longer than expected compression length ~D~%"
+		    compressed-len expected-compression-len))))))
   t)
   
 

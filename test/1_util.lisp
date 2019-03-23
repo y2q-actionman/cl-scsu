@@ -1,5 +1,10 @@
 (in-package :cl-scsu.test)
 
+;;; Exhaustive tests for some conversions.
+;;; (I once wrote `is' in deeply nested loop, but it causes endless
+;;; compilation (on old fiveam) or too many output (on 1am). So, I
+;;; rewrote them with `ALWAYS' clause.)
+
 (test test-window-offset-table
   (is
    (loop for i of-type (unsigned-byte 8) from 0 below #xFF
@@ -8,15 +13,14 @@
 		 (= (cl-scsu::window-offset-to-table-index offset) i)
 		 t)))
   (is
-   (loop for cp of-type fixnum from 0 below #x20000 by #x20
+   (loop for cp of-type fixnum from 0 below #x20000
       as candidates = (cl-scsu::list-offset-candidates cp)
       always
 	(loop for offset in candidates
 	   as table-index = (cl-scsu::window-offset-to-table-index offset)
 	   always (if (>= offset #x10000)
 		      (null table-index)
-		      table-index))))
-  t)
+		      table-index)))))
 
 (test test-extended-window-tag
   (is
@@ -36,8 +40,7 @@
 		      (cl-scsu::decode-extended-window-tag high low)
 		    (multiple-value-bind (h l)
 			(cl-scsu::encode-extended-window-tag w o)
-		      (and (= high h) (= low l)))))))
-  t)
+		      (and (= high h) (= low l))))))))
 
 (test test-surrogate-pair
   (is
@@ -52,5 +55,4 @@
 	   as cp = (cl-scsu::decode-from-surrogate-pair high low)
 	   always (multiple-value-bind (h l)
 		      (cl-scsu::encode-to-surrogate-pair cp)
-		    (and (= high h) (= low l))))))
-  t)
+		    (and (= high h) (= low l)))))))
