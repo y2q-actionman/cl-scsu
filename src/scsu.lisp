@@ -108,9 +108,9 @@ SCSUの内部状態を保持するオブジェクトのクラス。"))
 		 (slot-value ,%state 'current-timestamp) ,%c-t)
 	   (funcall ,return ,%dst ,%src))))))
 
-(defmacro with-buffer-accessor ((&key (reader (gensym) reader-supplied-p)
-				      (writer (gensym) writer-supplied-p)
-				      current)
+(defmacro with-buffer-accessor ((current
+				 &key (reader (gensym) reader-supplied-p)
+				 (writer (gensym) writer-supplied-p))
 				   (buffer start end &key (element-type '*))
 				&body body)
   (alexandria:once-only (buffer start end)
@@ -391,9 +391,9 @@ BYTES に渡された SCSU で圧縮されたバイト列を文字列に変換�
   	   (type fixnum start1 end1 start2 end2)
   	   (type string string))
   (scsu-trace-output "~2&")
-  (with-buffer-accessor (:reader pick-byte :current src-current)
+  (with-buffer-accessor (src-current :reader pick-byte)
       (bytes start1 end1 :element-type (unsigned-byte 8))
-    (with-buffer-accessor (:writer put-char :current dst-current)
+    (with-buffer-accessor (dst-current :writer put-char)
 	(string start2 end2 :element-type character)
       (loop while (< src-current end1)
 	 do (with-scsu-error-handling
@@ -648,31 +648,31 @@ BYTES に渡された SCSU で圧縮されたバイト列を文字列に変換�
 	  (t
 	   (encode-unit* state code-point next-code-point write-func)))))
 
-(defun initialize-timestamp (state initial-priority &optional string start end)
+(defun initialize-timestamp (state initial-priority string start end)
   (unless (scsu-state-timestamp-vector state)
     (setf (scsu-state-timestamp-vector state)
 	  (make-array +window-count+ :element-type 'fixnum :initial-element -1)))
-  (cond
-    ((eq initial-priority :fixed)
+  (case initial-priority
+    (:fixed		 ; hidden type (I think it is only for debug.)
      (setf (scsu-state-fix-dynamic-window state) t))
-    ((eq initial-priority :lookahead)
-     (let ((priority-array (make-array '(8) :element-type 'fixnum :initial-element 0)))
-       (declare (type (simple-array fixnum (8)) priority-array)
+    (:lookahead
+     (let ((priority-array (make-array +window-count+ :element-type 'fixnum :initial-element 0)))
+       (declare (type (simple-array fixnum (#.+window-count+)) priority-array)
 		(dynamic-extent priority-array))
        (loop for i of-type fixnum from start below end
 	  as w = (find-suitable-dynamic-window state (char-code (char string i)))
 	  when w do (incf (aref priority-array w)))
-       (initialize-timestamp state priority-array)))
-    ((eq initial-priority :random)
-       (loop for w of-type fixnum from 0 below +window-count+
-	  do (setf (scsu-state-timestamp state w) (- (random 100)))))
-    ((typep initial-priority 'array)
-     (let ((max (loop for i across initial-priority maximize i)))
-       (loop for w of-type fixnum from 0 below +window-count+
-	  do (setf (scsu-state-timestamp state w)
-		   (- (aref initial-priority w) max)))))
-    (t
-     (error "initial-priority must be one of :lookahead, :random, or fixnum array"))))
+       (initialize-timestamp state priority-array string start end))) ; going to the array path.
+    (:random
+     (map-into (scsu-state-timestamp-vector state)
+	       (lambda () (- (random 100)))))
+    (otherwise
+     (if (typep initial-priority 'array)
+	 (loop with max = (reduce #'max initial-priority)
+	    for w of-type fixnum from 0 below +window-count+
+	    do (setf (scsu-state-timestamp state w)
+		     (- (aref initial-priority w) max)))
+	 (error "initial-priority must be one of :lookahead, :random, or fixnum array")))))
 
 (defun encode-from-string (string
 			   &key (start1 0) (end1 (length string))
@@ -776,9 +776,9 @@ STRING を SCSU で圧縮したバイト列に変換して返す。
 	   (type fixnum start1 end1 start2 end2))
   (unless (scsu-state-timestamp-vector state)
     (initialize-timestamp state initial-priority string start1 end1))
-  (with-buffer-accessor (:reader pick-char :current src-current)
+  (with-buffer-accessor (src-current :reader pick-char)
       (string start1 end1 :element-type character)
-    (with-buffer-accessor (:writer put-byte :current dst-current)
+    (with-buffer-accessor (dst-current :writer put-byte)
 	(bytes start2 end2 :element-type (unsigned-byte 8))
       (loop while (< src-current end1)
 	 do (with-scsu-error-handling
@@ -847,7 +847,7 @@ STATE の内部状態を SCSU の初期状態に戻すためのバイト列を�
   BYTES を指定しなかった場合、無視される。"
   (declare (type (array (unsigned-byte 8) *) bytes)	   
 	   (type fixnum start end))
-  (with-buffer-accessor (:writer put-byte :current dst-current)
+  (with-buffer-accessor (dst-current :writer put-byte)
       (bytes start end :element-type (unsigned-byte 8))
     (with-scsu-error-handling
 	(state :dst dst-current
