@@ -31,8 +31,9 @@
 
 
 ;;; Tags
-(defconstant +window-count+ 8 "number of static or dynamic windows")
-(declaim (type window-index +window-count+))
+(defconstant +window-count+ 8 ; The upper-limit of window-index plus 1.
+  "The number of static or dynamic windows.")
+(declaim (type integer +window-count+))
 
 (defmacro define-window-find-function (name lower)
   `(defun ,name (byte)
@@ -172,7 +173,7 @@
       #x2100	      ; Letterlike Symbols and Number Forms
       #x3000)	      ; CJK Symbols & Punctuation
   :test 'equalp)
-(declaim (type (array fixnum (8)) +static-windows+))
+(declaim (type (array integer (8)) +static-windows+))
 
 (defun lookup-static-window (window)
   (declare (type window-index window))
@@ -188,7 +189,7 @@
       #x30A0  ; Katakana
       #xFF00) ; Fullwidth ASCII
   :test 'equalp)
-(declaim (type (array fixnum (8)) +default-positions-for-dynamically-positioned-windows+))
+(declaim (type (array integer (8)) +default-positions-for-dynamically-positioned-windows+))
 
 ;;; Utils
 (defun standalone-character-p (code-point)
