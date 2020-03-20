@@ -17,6 +17,8 @@
   (loop with str = (make-array '(#x100000) :element-type 'character
 			       :fill-pointer 0)
      for i fixnum from #x10000 to #x10FFFF by 3
+     as codepoint = (code-char i)
+     when codepoint ; In LispWorks, `code-char' returns NIL for a bad code-point.
      do (vector-push (code-char i) str)
      finally (is (codepoints-equalp* str))))
 
