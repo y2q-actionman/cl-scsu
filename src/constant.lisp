@@ -173,7 +173,7 @@
       #x2100	      ; Letterlike Symbols and Number Forms
       #x3000)	      ; CJK Symbols & Punctuation
   :test 'equalp)
-(declaim (type (array integer (8)) +static-windows+))
+(declaim (type (simple-vector 8) +static-windows+))
 
 (defun lookup-static-window (window)
   (declare (type window-index window))
@@ -189,7 +189,7 @@
       #x30A0  ; Katakana
       #xFF00) ; Fullwidth ASCII
   :test 'equalp)
-(declaim (type (array integer (8)) +default-positions-for-dynamically-positioned-windows+))
+(declaim (type (simple-vector 8) +default-positions-for-dynamically-positioned-windows+))
 
 ;;; Utils
 (defun standalone-character-p (code-point)
