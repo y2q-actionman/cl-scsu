@@ -10,7 +10,7 @@
   `(integer 0 #x10FFFF))
 
 ;;; Condition
-(define-condition scsu-error (error)
+(define-condition scsu-error (simple-error)
   ((src-error-position :initform nil :accessor scsu-error-src-error-position)
    (dst-error-position :initform nil :accessor scsu-error-dst-error-position)
    (parental-condition :initarg parental-condition :initform nil
